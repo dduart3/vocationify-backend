@@ -2,28 +2,85 @@ import { config } from '../config/environment';
 import { Question, RiasecType, RiasecWeights } from '../types/riasec';
 
 export class AIService {
-  private apiKey: string;
+  private openaiApiKey: string;
+  private anthropicApiKey: string;
 
   constructor() {
-    this.apiKey = config.ai.openaiApiKey || '';
+    this.openaiApiKey = config.ai.openaiApiKey || '';
+    this.anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
   }
 
   async generateQuestion(
     riasecType: RiasecType,
     context: any
   ): Promise<Question | null> {
-    if (!this.apiKey) {
-      console.warn('OpenAI API key not configured, skipping AI question generation');
+    // Try Anthropic first, then fallback to OpenAI
+    if (this.anthropicApiKey) {
+      return this.generateQuestionWithAnthropic(riasecType, context);
+    } else if (this.openaiApiKey) {
+      return this.generateQuestionWithOpenAI(riasecType, context);
+    } else {
+      console.warn('No AI API key configured, skipping AI question generation');
       return null;
     }
+  }
 
+  private async generateQuestionWithAnthropic(
+    riasecType: RiasecType,
+    context: any
+  ): Promise<Question | null> {
+    try {
+      const prompt = this.buildPrompt(riasecType, context);
+      
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.anthropicApiKey}`,
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 200,
+          messages: [
+            {
+              role: 'user',
+              content: `Eres un experto en psicología vocacional y el modelo RIASEC. Genera preguntas para tests vocacionales.\n\n${prompt}`
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`Anthropic API error: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      const generatedText = data.content[0]?.text?.trim();
+
+      if (!generatedText) {
+        return null;
+      }
+
+      return this.parseAIResponse(generatedText, riasecType);
+    } catch (error) {
+      console.error('Anthropic question generation failed:', error);
+      return null;
+    }
+  }
+
+  private async generateQuestionWithOpenAI(
+    riasecType: RiasecType,
+    context: any
+  ): Promise<Question | null> {
     try {
       const prompt = this.buildPrompt(riasecType, context);
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.openaiApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -56,7 +113,7 @@ export class AIService {
 
       return this.parseAIResponse(generatedText, riasecType);
     } catch (error) {
-      console.error('AI question generation failed:', error);
+      console.error('OpenAI question generation failed:', error);
       return null;
     }
   }

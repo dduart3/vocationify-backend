@@ -47,7 +47,7 @@ export class RiasecService {
 
       // Get RIASEC scores
       const { data: scores, error: scoresError } = await supabase
-        .from('riasec_scores')
+        .from('session_riasec_scores')
         .select('*')
         .eq('session_id', sessionId)
         .single();

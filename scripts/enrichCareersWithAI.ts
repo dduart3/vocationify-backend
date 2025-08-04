@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
-import dotenv from 'dotenv';
+import { createClient } from "@supabase/supabase-js";
+import OpenAI from "openai";
+import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -10,7 +10,7 @@ const supabase = createClient(
 );
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
 interface Career {
@@ -31,7 +31,7 @@ interface Career {
   work_environment?: string[];
   key_skills?: string[];
   related_careers?: string[];
-  updated_at:string;
+  updated_at: string;
 }
 
 interface RiasecAnalysis {
@@ -50,8 +50,7 @@ interface RiasecAnalysis {
 }
 
 async function analyzeCareerWithAI(career: Career): Promise<RiasecAnalysis> {
-  const prompt = `
-Analiza la siguiente carrera universitaria y proporciona un análisis RIASEC completo en español:
+  const prompt = `Analiza la siguiente carrera universitaria y proporciona un análisis RIASEC completo en español:
 
 CARRERA: ${career.name}
 DESCRIPCIÓN: ${career.description}
@@ -77,37 +76,37 @@ Por favor, proporciona un análisis detallado en formato JSON con:
    - key_skills: Array de 8-12 habilidades clave necesarias
    - related_careers: Array de 6-10 carreras relacionadas
 
-Responde SOLO con JSON válido, sin explicaciones adicionales.
-`;
+Responde SOLO con JSON válido, sin explicaciones adicionales.`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4.1",
       messages: [
         {
           role: "system",
-          content: "Eres un experto en orientación vocacional y análisis RIASEC. Respondes solo con JSON válido y preciso."
+          content:
+            "Eres un experto en orientación vocacional y análisis RIASEC. Respondes solo con JSON válido y preciso.",
         },
         {
           role: "user",
-          content: prompt
-        }
+          content: prompt,
+        },
       ],
       temperature: 0.3,
-      max_tokens: 1000
+      max_tokens: 1000,
     });
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      throw new Error('No response from OpenAI');
+      throw new Error("No response from OpenAI");
     }
 
     // Parse and validate the JSON response
     const analysis = JSON.parse(content) as RiasecAnalysis;
-    
+
     // Validate required fields
     if (!analysis.primary_riasec_type || !analysis.riasec_code) {
-      throw new Error('Invalid AI response: missing required fields');
+      throw new Error("Invalid AI response: missing required fields");
     }
 
     // Ensure scores are within valid range
@@ -117,55 +116,45 @@ Responde SOLO con JSON válido, sin explicaciones adicionales.
       analysis.artistic_score,
       analysis.social_score,
       analysis.enterprising_score,
-      analysis.conventional_score
+      analysis.conventional_score,
     ];
 
-    scores.forEach(score => {
+    scores.forEach((score) => {
       if (score < 0 || score > 100) {
         throw new Error(`Invalid score: ${score}. Must be between 0-100`);
       }
     });
 
     return analysis;
-
   } catch (error) {
-    console.error(`Error analyzing career ${career.name}:`, error);
-    
-    // Fallback analysis if AI fails
-    return {
-      primary_riasec_type: 'investigative',
-      secondary_riasec_type: 'conventional',
-      riasec_code: 'IC',
-      realistic_score: 30,
-      investigative_score: 70,
-      artistic_score: 20,
-      social_score: 40,
-      enterprising_score: 30,
-      conventional_score: 50,
-      work_environment: ['oficina', 'universidad', 'laboratorio'],
-      key_skills: ['análisis', 'investigación', 'comunicación'],
-      related_careers: ['Carreras relacionadas por determinar']
-    };
+    console.error(`❌ Failed to analyze career ${career.name}:`, error);
+    // Re-throw the error instead of providing fallback data
+    throw new Error(
+      `Failed to analyze career "${career.name}": ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 
 async function enrichCareers() {
   try {
-    console.log('🚀 Starting career enrichment process...');
+    console.log("🚀 Starting career enrichment process...");
 
     // 1. FETCH existing careers from database
-    console.log('📥 Fetching existing careers...');
+    console.log("📥 Fetching existing careers...");
     const { data: careers, error: fetchError } = await supabase
-      .from('careers')
-      .select('*')
-      .order('name');
+      .from("careers")
+      .select("*")
+      .order("name")
+      .eq('name', 'MUSICA');
 
     if (fetchError) {
       throw new Error(`Error fetching careers: ${fetchError.message}`);
     }
 
     if (!careers || careers.length === 0) {
-      console.log('❌ No careers found in database');
+      console.log("❌ No careers found in database");
       return;
     }
 
@@ -173,10 +162,12 @@ async function enrichCareers() {
 
     // 2. ENRICH each career with AI analysis
     const enrichedCareers: Career[] = [];
-    
+
     for (let i = 0; i < careers.length; i++) {
       const career = careers[i];
-      console.log(`🤖 Analyzing career ${i + 1}/${careers.length}: ${career.name}`);
+      console.log(
+        `🤖 Analyzing career ${i + 1}/${careers.length}: ${career.name}`
+      );
 
       try {
         // Skip if already enriched (has RIASEC data)
@@ -186,20 +177,21 @@ async function enrichCareers() {
         }
 
         const analysis = await analyzeCareerWithAI(career);
-        
+
         const enrichedCareer: Career = {
           ...career,
           ...analysis,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         };
 
         enrichedCareers.push(enrichedCareer);
-        
-        console.log(`✅ Enriched: ${career.name} -> ${analysis.riasec_code} (${analysis.primary_riasec_type})`);
-        
-        // Add delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
 
+        console.log(
+          `✅ Enriched: ${career.name} -> ${analysis.riasec_code} (${analysis.primary_riasec_type})`
+        );
+
+        // Add delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (error) {
         console.error(`❌ Failed to enrich ${career.name}:`, error);
       }
@@ -210,7 +202,7 @@ async function enrichCareers() {
 
     for (const career of enrichedCareers) {
       const { error: updateError } = await supabase
-        .from('careers')
+        .from("careers")
         .update({
           primary_riasec_type: career.primary_riasec_type,
           secondary_riasec_type: career.secondary_riasec_type,
@@ -224,32 +216,36 @@ async function enrichCareers() {
           work_environment: career.work_environment,
           key_skills: career.key_skills,
           related_careers: career.related_careers,
-          updated_at: career.updated_at
+          updated_at: career.updated_at,
         })
-        .eq('id', career.id);
+        .eq("id", career.id);
 
       if (updateError) {
-        console.error(`❌ Failed to update ${career.name}:`, updateError.message);
+        console.error(
+          `❌ Failed to update ${career.name}:`,
+          updateError.message
+        );
       } else {
         console.log(`✅ Updated: ${career.name}`);
       }
     }
 
-    console.log('🎉 Career enrichment completed successfully!');
-    
+    console.log("🎉 Career enrichment completed successfully!");
+
     // 4. SUMMARY
     const { data: updatedCareers, error: summaryError } = await supabase
-      .from('careers')
-      .select('name, primary_riasec_type, riasec_code')
-      .not('primary_riasec_type', 'is', null)
-      .order('primary_riasec_type');
+      .from("careers")
+      .select("name, primary_riasec_type, riasec_code")
+      .not("primary_riasec_type", "is", null)
+      .order("primary_riasec_type");
 
     if (!summaryError && updatedCareers) {
-      console.log('\n📈 ENRICHMENT SUMMARY:');
+      console.log("\n📈 ENRICHMENT SUMMARY:");
       console.log(`Total enriched careers: ${updatedCareers.length}`);
-      
+
       const typeCount = updatedCareers.reduce((acc, career) => {
-        acc[career.primary_riasec_type] = (acc[career.primary_riasec_type] || 0) + 1;
+        acc[career.primary_riasec_type] =
+          (acc[career.primary_riasec_type] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
@@ -257,9 +253,8 @@ async function enrichCareers() {
         console.log(`${type}: ${count} careers`);
       });
     }
-
   } catch (error) {
-    console.error('💥 Error in enrichment process:', error);
+    console.error("💥 Error in enrichment process:", error);
     process.exit(1);
   }
 }
@@ -268,11 +263,11 @@ async function enrichCareers() {
 if (require.main === module) {
   enrichCareers()
     .then(() => {
-      console.log('✨ Process completed');
+      console.log("✨ Process completed");
       process.exit(0);
     })
     .catch((error) => {
-      console.error('💥 Process failed:', error);
+      console.error("💥 Process failed:", error);
       process.exit(1);
     });
 }

@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "start:dev": "ts-node src/server.ts",
+    "populate-careers": "ts-node scripts/populateCareersWithClaude.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "nodemonConfig": {
