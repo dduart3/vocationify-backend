@@ -12,7 +12,7 @@ export interface CreateSessionRequest {
 }
 
 export interface CreateSessionResponse {
-  session_id: string;
+  id: string;
   question: Question;
   progress: number;
 }
@@ -36,7 +36,7 @@ export interface SubmitResponseResponse {
 }
 
 export interface GetSessionResponse {
-  session_id: string;
+  id: string;
   question_count: number;
   current_scores: RiasecScore;
   progress: number;

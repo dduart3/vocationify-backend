@@ -24,7 +24,7 @@ export class SessionController {
     res.status(201).json({
       success: true,
       data: {
-        session_id: sessionId,
+        id: sessionId,
         question: firstQuestion,
         progress: 0
       }
@@ -48,7 +48,7 @@ export class SessionController {
     res.json({
       success: true,
       data: {
-        session_id: context.session_id,
+        id: context.session_id,
         question_count: context.question_count,
         current_scores: context.current_riasec_scores,
         progress,
