@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { sessionRoutes } from './sessionRoutes';
 import { questionRoutes } from './questionRoutes';
 import { resultRoutes } from './resultRoutes';
+import conversationRoutes from './conversations';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.get('/health', (req, res) => {
 router.use('/sessions', sessionRoutes);
 router.use('/questions', questionRoutes);
 router.use('/results', resultRoutes);
+router.use('/conversations', conversationRoutes); // Conversation routes at /api/conversations
 
 export { router as apiRoutes };

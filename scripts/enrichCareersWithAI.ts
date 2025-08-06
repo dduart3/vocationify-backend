@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,9 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 interface Career {
   id: string;
@@ -79,30 +77,22 @@ Por favor, proporciona un análisis detallado en formato JSON con:
 Responde SOLO con JSON válido, sin explicaciones adicionales.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Eres un experto en orientación vocacional y análisis RIASEC. Respondes solo con JSON válido y preciso.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 1000,
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-001',
+      contents: `Sistema: Eres un experto en orientación vocacional y análisis RIASEC. Respondes solo con JSON válido y preciso.\n\nUsuario: ${prompt}`
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.text;
     if (!content) {
-      throw new Error("No response from OpenAI");
+      throw new Error("No response from Gemini");
     }
 
+    // Clean the response to extract JSON (Gemini sometimes adds markdown)
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonContent = jsonMatch ? jsonMatch[0] : content;
+    
     // Parse and validate the JSON response
-    const analysis = JSON.parse(content) as RiasecAnalysis;
+    const analysis = JSON.parse(jsonContent) as RiasecAnalysis;
 
     // Validate required fields
     if (!analysis.primary_riasec_type || !analysis.riasec_code) {
