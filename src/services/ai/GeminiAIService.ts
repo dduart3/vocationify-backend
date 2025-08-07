@@ -20,10 +20,13 @@ ${conversationHistory}
 
 INSTRUCCIONES ESPECÍFICAS:
 - Responde como ARIA, un asistente de orientación vocacional amigable y conversacional
-- Haz preguntas naturales que revelen intereses, habilidades y preferencias de trabajo
-- Mantén un tono cálido y profesional
-- Si detectas patrones RIASEC, menciónalos sutilmente
-- Adapta las preguntas según las respuestas previas
+- OBJETIVO PRINCIPAL: Descubrir el perfil RIASEC del usuario para recomendar las TOP 3 carreras
+- ESTRATEGIA: Haz preguntas DIRECTAS sobre cada tipo RIASEC de forma EFICIENTE
+- PROGRESIÓN: Saludo → Explorar 2-3 áreas RIASEC → Evaluar → Dar TOP 3 recomendaciones
+- USA CONTEXTO: Las respuestas anteriores son clave para entender patrones RIASEC
+- SÉ ESPECÍFICA: Pregunta sobre actividades concretas, materias favoritas, forma de resolver problemas
+- CAMBIA RÁPIDO: Si ya sabes el score de un área RIASEC, pasa a otra
+- META: 6-8 intercambios máximo antes de dar recomendaciones finales
 
 FORMATO DE RESPUESTA (JSON):
 {
@@ -55,8 +58,29 @@ Responde SOLO con JSON válido.`;
       });
 
       const content = response.text || '';
+      console.log('🤖 Raw AI response:', content);
+      
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      const parsedResponse = JSON.parse(jsonMatch ? jsonMatch[0] : content) as ConversationResponse;
+      if (!jsonMatch) {
+        console.log('❌ No JSON found in response, using fallback');
+        return this.getFallbackResponse();
+      }
+      
+      const jsonText = jsonMatch[0];
+      console.log('📄 Extracted JSON:', jsonText);
+      
+      const parsedResponse = JSON.parse(jsonText) as ConversationResponse;
+      console.log('✅ Parsed response:', { 
+        message: parsedResponse.message?.substring(0, 50) + '...', 
+        intent: parsedResponse.intent,
+        nextPhase: parsedResponse.nextPhase 
+      });
+      
+      // Ensure nextPhase is set
+      if (!parsedResponse.nextPhase) {
+        console.log('⚠️ Missing nextPhase, setting to exploration');
+        parsedResponse.nextPhase = 'exploration';
+      }
       
       return parsedResponse;
     } catch (error) {
@@ -144,10 +168,11 @@ PERSONALIDAD:
 - Genuinamente interesado en ayudar
 - Adaptas tu comunicación al usuario
 
-OBJETIVO:
-- Descubrir el perfil vocacional del usuario mediante conversación natural
-- Evaluar tipos RIASEC (Realistic, Investigative, Artistic, Social, Enterprising, Conventional)
-- Recomendar las 3 mejores carreras de nuestra base de datos
+OBJETIVO PRINCIPAL:
+- Descubrir qué carrera universitaria le conviene al usuario
+- Evaluar tipos RIASEC de manera EFICIENTE (no extensiva)
+- Hacer máximo 8-10 preguntas antes de dar recomendaciones
+- Recomendar las 3 mejores carreras con base sólida
 
 FASE ACTUAL: ${phase}
 USUARIO: ${userName || 'Usuario'}
@@ -167,15 +192,21 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
   }
 
   private getFallbackResponse(): ConversationResponse {
+    console.log('🔄 Using fallback response due to AI parsing error');
     return {
-      message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional. Estoy aquí para ayudarte a descubrir qué carrera universitaria podría ser perfecta para ti. ¿Me podrías contar qué tipo de actividades realmente disfrutas hacer?",
+      message: "Disculpa, tuve un pequeño problema técnico. Pero sigamos adelante: cuéntame sobre tus intereses. ¿Qué tipo de actividades realmente disfrutas hacer en tu tiempo libre?",
       intent: "question",
       suggestedFollowUp: [
         "¿Prefieres trabajar con tus manos o con ideas?",
         "¿Te gusta resolver problemas complejos?",
         "¿Disfrutas ayudar a otras personas?"
       ],
-      nextPhase: "exploration"
+      nextPhase: "exploration",
+      riasecAssessment: {
+        scores: { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
+        confidence: 20,
+        reasoning: 'Respuesta de fallback - sin evaluación aún'
+      }
     };
   }
 }
