@@ -166,7 +166,28 @@ export class ConversationalSessionService {
       }
     };
 
-    const aiResponse = await this.aiService.generateConversationalResponse(request);
+    let aiResponse;
+    try {
+      console.log(`🤖 Calling AI service (${this.aiService.constructor.name}) for session ${sessionId}`);
+      aiResponse = await this.aiService.generateConversationalResponse(request);
+      console.log(`✅ AI service responded successfully`);
+    } catch (error) {
+      console.error(`❌ AI service failed for session ${sessionId}:`, error);
+      console.error('📋 Request context:', {
+        sessionId,
+        messageCount: request.messages.length,
+        currentPhase: request.context?.currentPhase,
+        careersAvailable: request.context?.availableCareers?.length || 0
+      });
+      
+      // Return fallback response
+      aiResponse = {
+        message: "Disculpa, tuve un problema técnico. ¿Podrías repetir tu respuesta? Estoy aquí para ayudarte con tu orientación vocacional.",
+        intent: 'clarification' as const,
+        nextPhase: request.context?.currentPhase || 'exploration' as const
+      };
+      console.log('🔄 Using fallback response due to AI service failure');
+    }
 
     // Add AI response to history
     const aiMsg: ConversationMessage = {

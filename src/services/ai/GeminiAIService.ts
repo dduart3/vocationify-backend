@@ -31,9 +31,10 @@ INSTRUCCIONES ESPECÍFICAS:
 FASES DETALLADAS:
 1. EXPLORACIÓN (3-4 preguntas): UNA pregunta sobre intereses, luego actividades favoritas, materias
 2. ASSESSMENT (4-5 preguntas): UNA pregunta sobre habilidades, luego valores, ambiente de trabajo
-3. RECOMENDACIÓN: TOP 3 carreras MUY RELEVANTES - DEBEN coincidir con los intereses mencionados
-   EJEMPLO: Si mencionan programación/ciberseguridad → INGENIERÍA EN INFORMÁTICA, COMPUTACIÓN, SISTEMAS
-   NUNCA sugieras carreras no relacionadas con los intereses del usuario
+3. RECOMENDACIÓN: Analiza CUIDADOSAMENTE los intereses del usuario contra la base de datos de carreras
+   - Lee las descripciones de carreras para encontrar las más relevantes
+   - Considera tanto RIASEC como la compatibilidad temática
+   - Justifica cada recomendación con conexiones específicas a sus intereses
 4. EXPLORACIÓN DE CARRERAS: Responder preguntas específicas del usuario
 5. FINALIZACIÓN: Cuando usuario confirme
 
@@ -54,7 +55,7 @@ FORMATO DE RESPUESTA (JSON):
       "careerId": "USAR ID EXACTO de las CARRERAS DISPONIBLES listadas arriba",
       "name": "Nombre EXACTO de carrera de la lista",
       "confidence": 0-100,
-      "reasoning": "DEBE explicar cómo esta carrera conecta DIRECTAMENTE con los intereses específicos mencionados por el usuario"
+      "reasoning": "Explica específicamente por qué esta carrera encaja con los intereses, habilidades y valores mencionados por el usuario. Cita palabras/temas específicos de su conversación."
     }
   ],
   "nextPhase": "exploration|assessment|recommendation|career_exploration|complete"
@@ -113,7 +114,15 @@ Responde SOLO con JSON válido.`;
       
       return parsedResponse;
     } catch (error) {
-      console.error('Gemini AI Error:', error);
+      console.error('❌ Gemini AI Service Error:', error);
+      console.error('📋 Error details:', {
+        model: 'gemini-2.0-flash-001',
+        messageCount: request.messages.length,
+        currentPhase: request.context?.currentPhase,
+        errorType: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      console.log('🔄 Returning fallback response due to Gemini API failure');
       return this.getFallbackResponse();
     }
   }
@@ -149,7 +158,13 @@ Responde SOLO con JSON: {"R": score, "I": score, "A": score, "S": score, "E": sc
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       return JSON.parse(jsonMatch ? jsonMatch[0] : content);
     } catch (error) {
-      console.error('RIASEC Assessment Error:', error);
+      console.error('❌ Gemini RIASEC Assessment Error:', error);
+      console.error('📋 Assessment context:', {
+        conversationLength: conversationText.length,
+        messageCount: messages.length,
+        errorType: error instanceof Error ? error.name : typeof error
+      });
+      console.log('🔄 Using default RIASEC scores due to assessment failure');
       return { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 };
     }
   }
@@ -215,7 +230,7 @@ CONTEXTO ACTUAL - EXPLORACIÓN DE CARRERAS:
   * NUNCA fuerces una recomendación que no sea realmente similar
 
 CARRERAS DISPONIBLES EN MARACAIBO:
-${context?.availableCareers?.slice(0, 10).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 150)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
+${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
 
 OBJETIVO EN ESTA FASE:
 - Resolver dudas específicas sobre carreras
@@ -254,14 +269,14 @@ ASPECTOS A EXPLORAR:
 7. Importancia del aspecto económico vs. satisfacción personal
 
 CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
-${context?.availableCareers?.slice(0, 8).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 120)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
+${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 200)} (RIASEC: ${c.riasecCode}, Scores: I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando carreras...'}
 
-IMPORTANTE MATCHING: 
-- Programación/Código/Software → INGENIERÍA EN INFORMÁTICA, COMPUTACIÓN, SISTEMAS
-- Ciberseguridad → INGENIERÍA EN INFORMÁTICA
-- Medicina/Salud → MEDICINA, ENFERMERÍA  
-- Arte/Diseño → DISEÑO GRÁFICO, ARTES
-- SIEMPRE conecta los intereses del usuario con carreras relevantes`;
+PROCESO DE RECOMENDACIÓN:
+1. Revisa TODOS los intereses y habilidades mencionados por el usuario
+2. Examina las descripciones de carreras para encontrar coincidencias temáticas
+3. Considera los scores RIASEC de las carreras vs el perfil del usuario
+4. Selecciona las 3 carreras con mayor relevancia combinada (tema + RIASEC)
+5. Explica claramente por qué cada carrera encaja con SUS intereses específicos`;
     }
 
     systemPrompt += `

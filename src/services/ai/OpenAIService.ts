@@ -36,7 +36,14 @@ export class OpenAIService extends AIServiceInterface {
 
       return JSON.parse(content) as ConversationResponse;
     } catch (error) {
-      console.error('OpenAI Error:', error);
+      console.error('❌ OpenAI Service Error:', error);
+      console.error('📋 Error details:', {
+        model: 'gpt-4',
+        messageCount: messages.length,
+        errorType: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      console.log('🔄 Returning fallback response due to OpenAI API failure');
       return this.getFallbackResponse();
     }
   }
@@ -75,7 +82,13 @@ Responde SOLO con JSON válido.`
       const content = response.choices[0]?.message?.content;
       return JSON.parse(content || '{"R": 50, "I": 50, "A": 50, "S": 50, "E": 50, "C": 50}');
     } catch (error) {
-      console.error('RIASEC Assessment Error:', error);
+      console.error('❌ OpenAI RIASEC Assessment Error:', error);
+      console.error('📋 Assessment context:', {
+        conversationLength: conversationText.length,
+        messageCount: messages.length,
+        errorType: error instanceof Error ? error.name : typeof error
+      });
+      console.log('🔄 Using default RIASEC scores due to assessment failure');
       return { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 };
     }
   }
@@ -111,7 +124,12 @@ Responde solo con la pregunta en español.`
 
       return response.choices[0]?.message?.content?.trim() || "¿Qué actividades te emocionan más?";
     } catch (error) {
-      console.error('Question Generation Error:', error);
+      console.error('❌ OpenAI Question Generation Error:', error);
+      console.error('📋 Question context:', {
+        phase: context?.currentPhase,
+        errorType: error instanceof Error ? error.name : typeof error
+      });
+      console.log('🔄 Using fallback question due to generation failure');
       return "¿Qué tipo de actividades disfrutas más?";
     }
   }
@@ -146,13 +164,13 @@ ${context?.availableCareers?.slice(0, 10).map(c => `- ID: ${c.id} | ${c.name}: $
 
 OBJETIVO: Descubrir perfil vocacional con UNA pregunta por vez y recomendar carreras MUY RELEVANTES.
 
-REGLAS ESTRICTAS:
+REGLAS:
 - UNA pregunta por mensaje, nunca múltiples
-- Recomendar SOLO carreras que coincidan con intereses mencionados
-- Programación/Código → INGENIERÍA EN INFORMÁTICA, COMPUTACIÓN, SISTEMAS
+- Analiza cuidadosamente las descripciones de carreras vs intereses del usuario
+- Selecciona carreras con mayor relevancia temática + RIASEC match
 
 CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
-${context?.availableCareers?.slice(0, 8).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 120)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando...'}
+${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode}, I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando...'}
 
 IMPORTANTE: Si mencionas carreras no en esta lista, aclara que "no están disponibles en Maracaibo actualmente"`;
     }
