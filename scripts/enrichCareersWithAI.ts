@@ -28,7 +28,6 @@ interface Career {
   conventional_score?: number;
   work_environment?: string[];
   key_skills?: string[];
-  related_careers?: string[];
   updated_at: string;
 }
 
@@ -44,7 +43,6 @@ interface RiasecAnalysis {
   conventional_score: number;
   work_environment: string[];
   key_skills: string[];
-  related_careers: string[];
 }
 
 async function analyzeCareerWithAI(career: Career): Promise<RiasecAnalysis> {
@@ -54,27 +52,23 @@ CARRERA: ${career.name}
 DESCRIPCIÓN: ${career.description}
 DURACIÓN: ${career.duration_years} años
 
-Por favor, proporciona un análisis detallado en formato JSON con:
+Por favor, responde con un JSON PLANO (no anidado) con estos campos exactos:
 
-1. RIASEC SCORES (0-100 para cada tipo):
-   - realistic_score: Trabajo con herramientas, máquinas, objetos físicos
-   - investigative_score: Investigación, análisis, resolución de problemas
-   - artistic_score: Creatividad, expresión artística, originalidad
-   - social_score: Ayudar, enseñar, trabajar con personas
-   - enterprising_score: Liderazgo, ventas, persuasión, negocios
-   - conventional_score: Organización, datos, procedimientos estructurados
+{
+  "realistic_score": number (0-100, trabajo con herramientas/objetos físicos),
+  "investigative_score": number (0-100, investigación/análisis/problemas),
+  "artistic_score": number (0-100, creatividad/expresión artística),
+  "social_score": number (0-100, ayudar/enseñar/trabajar con personas),
+  "enterprising_score": number (0-100, liderazgo/ventas/negocios),
+  "conventional_score": number (0-100, organización/datos/procedimientos),
+  "primary_riasec_type": "realistic" | "investigative" | "artistic" | "social" | "enterprising" | "conventional" (el tipo con mayor puntuación),
+  "secondary_riasec_type": "realistic" | "investigative" | "artistic" | "social" | "enterprising" | "conventional" (el segundo más alto),
+  "riasec_code": "XYZ" (código de 3 letras con tipos dominantes, ej: "ASE", "IRC"),
+  "work_environment": ["ambiente1", "ambiente2"] (2-4 ambientes de: "oficina", "laboratorio", "campo", "hospital", "escuela", "fabrica", "taller", "hogar", "exterior", "remoto", "comercio", "estudio"),
+  "key_skills": ["habilidad1", "habilidad2"] (3-5 habilidades de: "comunicacion", "liderazgo", "analisis", "creatividad", "organizacion", "tecnico", "interpersonal", "resolucion-problemas", "investigacion", "matematicas", "escritura", "diseno", "ventas", "ensenanza", "cuidado", "planificacion", "innovacion", "detalle", "trabajo-equipo", "adaptabilidad")
+}
 
-2. TIPOS DOMINANTES:
-   - primary_riasec_type: El tipo con mayor puntuación
-   - secondary_riasec_type: El segundo tipo más alto
-   - riasec_code: Código de 3 letras (ej: "IAS", "SEC")
-
-3. CONTEXTO LABORAL:
-   - work_environment: Array de 5-8 ambientes de trabajo típicos
-   - key_skills: Array de 8-12 habilidades clave necesarias
-   - related_careers: Array de 6-10 carreras relacionadas
-
-Responde SOLO con JSON válido, sin explicaciones adicionales.`;
+Responde SOLO con JSON válido y plano, sin explicaciones ni markdown.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -83,6 +77,8 @@ Responde SOLO con JSON válido, sin explicaciones adicionales.`;
     });
 
     const content = response.text;
+    console.log(`🤖 Raw AI response for ${career.name}:`, content?.substring(0, 300) + '...');
+    
     if (!content) {
       throw new Error("No response from Gemini");
     }
@@ -90,6 +86,8 @@ Responde SOLO con JSON válido, sin explicaciones adicionales.`;
     // Clean the response to extract JSON (Gemini sometimes adds markdown)
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     const jsonContent = jsonMatch ? jsonMatch[0] : content;
+    
+    console.log(`🔧 Cleaned JSON for ${career.name}:`, jsonContent.substring(0, 300) + '...');
     
     // Parse and validate the JSON response
     const analysis = JSON.parse(jsonContent) as RiasecAnalysis;
@@ -136,8 +134,7 @@ async function enrichCareers() {
     const { data: careers, error: fetchError } = await supabase
       .from("careers")
       .select("*")
-      .order("name")
-      .eq('name', 'MUSICA');
+      .order("name");
 
     if (fetchError) {
       throw new Error(`Error fetching careers: ${fetchError.message}`);
@@ -205,7 +202,6 @@ async function enrichCareers() {
           conventional_score: career.conventional_score,
           work_environment: career.work_environment,
           key_skills: career.key_skills,
-          related_careers: career.related_careers,
           updated_at: career.updated_at,
         })
         .eq("id", career.id);

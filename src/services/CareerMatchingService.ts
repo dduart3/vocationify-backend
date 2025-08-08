@@ -12,7 +12,6 @@ interface CareerMatch {
     riasec_code: string;
     work_environment: string[];
     key_skills: string[];
-    related_careers: string[];
   };
   compatibility_score: number;
   match_reasons: string[];

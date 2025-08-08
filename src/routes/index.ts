@@ -1,7 +1,4 @@
 import { Router } from 'express';
-import { sessionRoutes } from './sessionRoutes';
-import { questionRoutes } from './questionRoutes';
-import { resultRoutes } from './resultRoutes';
 import conversationRoutes from './conversations';
 import ttsRoutes from './tts';
 
@@ -18,10 +15,7 @@ router.get('/health', (req, res) => {
 });
 
 // API routes
-router.use('/sessions', sessionRoutes);
-router.use('/questions', questionRoutes);
-router.use('/results', resultRoutes);
-router.use('/conversations', conversationRoutes); // Conversation routes at /api/conversations
-router.use('/tts', ttsRoutes); // TTS routes at /api/tts
+router.use('/conversations', conversationRoutes); // Conversational vocational test routes
+router.use('/tts', ttsRoutes); // Text-to-speech routes
 
 export { router as apiRoutes };

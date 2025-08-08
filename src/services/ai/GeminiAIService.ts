@@ -21,23 +21,28 @@ ${conversationHistory}
 INSTRUCCIONES ESPECÍFICAS:
 - Responde como ARIA, un asistente de orientación vocacional amigable y conversacional
 - OBJETIVO PRINCIPAL: Descubrir perfil vocacional COMPLETO para recomendar TOP 3 carreras con alta confianza
-- ESTRATEGIA: Exploración integral pero fluida - cada pregunta debe revelar múltiples aspectos RIASEC
-- PROGRESIÓN: Saludo → Intereses generales → Habilidades → Valores → Ambiente preferido → Motivaciones → Recomendaciones
-- USA CONTEXTO: Conecta respuestas anteriores para hacer preguntas más profundas e inteligentes
-- SÉ ESPECÍFICA: Situaciones concretas, proyectos favoritos, forma de abordar problemas, satisfacciones laborales
-- MULTI-DIMENSIONAL: Cada pregunta debe explorar 2-3 dimensiones RIASEC simultáneamente
-- META: 12-15 intercambios para perfil completo, luego recomendaciones detalladas con reasoning sólido
+- ESTRATEGIA: UNA pregunta clara y específica por vez - no múltiples preguntas
+- PROGRESIÓN: Saludo → Intereses → Habilidades → Valores → Ambiente → Motivaciones → Recomendaciones  
+- USA CONTEXTO: Conecta respuestas anteriores para hacer LA siguiente pregunta más inteligente
+- SÉ ESPECÍFICA: Situaciones concretas, pero UNA pregunta a la vez
+- ENFOQUE SIMPLE: Cada pregunta explora UN aspecto principal, manténlo conversacional
+- META: 8-12 intercambios eficientes, una pregunta por mensaje
 
 FASES DETALLADAS:
-1. EXPLORACIÓN (4-5 preguntas): Intereses, actividades favoritas, materias que disfruta
-2. ASSESSMENT (6-8 preguntas): Habilidades, valores, estilo de trabajo, motivaciones
-3. REFINAMIENTO (2-3 preguntas): Clarificaciones específicas, ambiente laboral, prioridades
-4. RECOMENDACIÓN: TOP 3 carreras con reasoning detallado y % de compatibilidad
+1. EXPLORACIÓN (3-4 preguntas): UNA pregunta sobre intereses, luego actividades favoritas, materias
+2. ASSESSMENT (4-5 preguntas): UNA pregunta sobre habilidades, luego valores, ambiente de trabajo
+3. RECOMENDACIÓN: TOP 3 carreras MUY RELEVANTES - DEBEN coincidir con los intereses mencionados
+   EJEMPLO: Si mencionan programación/ciberseguridad → INGENIERÍA EN INFORMÁTICA, COMPUTACIÓN, SISTEMAS
+   NUNCA sugieras carreras no relacionadas con los intereses del usuario
+4. EXPLORACIÓN DE CARRERAS: Responder preguntas específicas del usuario
+5. FINALIZACIÓN: Cuando usuario confirme
+
+IMPORTANTE: NUNCA hagas múltiples preguntas en un solo mensaje
 
 FORMATO DE RESPUESTA (JSON):
 {
   "message": "Tu respuesta conversacional aquí",
-  "intent": "question|clarification|assessment|recommendation|farewell",
+  "intent": "question|clarification|assessment|recommendation|completion_check|farewell",
   "suggestedFollowUp": ["pregunta opcional 1", "pregunta opcional 2"],
   "riasecAssessment": {
     "scores": {"R": 0-100, "I": 0-100, "A": 0-100, "S": 0-100, "E": 0-100, "C": 0-100},
@@ -46,13 +51,13 @@ FORMATO DE RESPUESTA (JSON):
   },
   "careerSuggestions": [
     {
-      "careerId": "id_de_carrera",
-      "name": "Nombre de carrera",
+      "careerId": "USAR ID EXACTO de las CARRERAS DISPONIBLES listadas arriba",
+      "name": "Nombre EXACTO de carrera de la lista",
       "confidence": 0-100,
-      "reasoning": "Por qué esta carrera"
+      "reasoning": "DEBE explicar cómo esta carrera conecta DIRECTAMENTE con los intereses específicos mencionados por el usuario"
     }
   ],
-  "nextPhase": "exploration|assessment|recommendation|complete"
+  "nextPhase": "exploration|assessment|recommendation|career_exploration|complete"
 }
 
 Responde SOLO con JSON válido.`;
@@ -72,10 +77,28 @@ Responde SOLO con JSON válido.`;
         return this.getFallbackResponse();
       }
       
-      const jsonText = jsonMatch[0];
+      let jsonText = jsonMatch[0];
       console.log('📄 Extracted JSON:', jsonText);
       
-      const parsedResponse = JSON.parse(jsonText) as ConversationResponse;
+      // Try to fix common JSON issues
+      if (!jsonText.trim().endsWith('}')) {
+        console.log('⚠️ JSON appears truncated, attempting to fix...');
+        // Find the last complete field and close the JSON
+        const lastCompleteField = jsonText.lastIndexOf(',');
+        if (lastCompleteField > 0) {
+          jsonText = jsonText.substring(0, lastCompleteField) + '}';
+          console.log('🔧 Fixed JSON:', jsonText);
+        }
+      }
+      
+      let parsedResponse: ConversationResponse;
+      try {
+        parsedResponse = JSON.parse(jsonText) as ConversationResponse;
+      } catch (parseError) {
+        console.error('❌ JSON parse error:', parseError);
+        console.log('🔧 Attempting to use fallback...');
+        return this.getFallbackResponse();
+      }
       console.log('✅ Parsed response:', { 
         message: parsedResponse.message?.substring(0, 50) + '...', 
         intent: parsedResponse.intent,
@@ -166,13 +189,53 @@ Genera UNA pregunta natural y conversacional en español. Responde solo con la p
     const phase = context?.currentPhase || 'greeting';
     const userName = context?.userProfile?.name || '';
     
-    return `Eres ARIA, un asistente de orientación vocacional inteligente y amigable.
+    let systemPrompt = `Eres ARIA, un asistente de orientación vocacional inteligente y amigable.
 
 PERSONALIDAD:
 - Cálido, empático y profesional
 - Conversacional, no robótico
 - Genuinamente interesado en ayudar
-- Adaptas tu comunicación al usuario
+- Adaptas tu comunicación al usuario`;
+
+    if (phase === 'career_exploration') {
+      systemPrompt += `
+
+CONTEXTO ACTUAL - EXPLORACIÓN DE CARRERAS:
+- El usuario ya completó su evaluación RIASEC y recibió recomendaciones iniciales
+- Ahora está explorando carreras de forma interactiva
+- Puedes responder preguntas específicas sobre carreras, salarios, trabajo diario, requisitos
+- Sugiere alternativas relevantes basadas en su perfil
+- Ayúdalo a entender las implicaciones prácticas de cada opción
+- IMPORTANTE: USA SOLO las carreras de la lista abajo con sus IDs exactos para recomendaciones
+- Si el usuario pregunta por una carrera NO disponible en Maracaibo:
+  * Sé HONESTO: "Esa carrera no está disponible en Maracaibo actualmente"
+  * Proporciona información general básica sobre esa carrera si la conoces
+  * Busca similares en la lista con alta similitud (>80% compatible)
+  * Si no hay similares suficientes, explica las diferencias y deja que elija
+  * NUNCA fuerces una recomendación que no sea realmente similar
+
+CARRERAS DISPONIBLES EN MARACAIBO:
+${context?.availableCareers?.slice(0, 10).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 150)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
+
+OBJETIVO EN ESTA FASE:
+- Resolver dudas específicas sobre carreras
+- Proporcionar información detallada y práctica
+- Sugerir alternativas cuando sea relevante
+- Ayudar a tomar una decisión informada
+
+LÓGICA DE FINALIZACIÓN INTELIGENTE:
+- Si detectas señales de que el usuario podría estar listo para finalizar:
+  * Ha explorado 3+ carreras
+  * Hace preguntas más específicas sobre 1-2 carreras
+  * Expresa satisfacción o decisión ("creo que ya sé", "me gusta esta opción")
+  * Ha estado en esta fase por 5+ intercambios
+- ENTONCES usa intent: "completion_check" y pregunta si quiere ver resultados finales
+- Proporciona botones: ["Ver resultados finales", "Explorar más carreras"]
+- SOLO usa nextPhase: "complete" cuando el usuario confirme explícitamente que quiere terminar
+- Si usuario dice "Ver resultados finales" → nextPhase: "complete" inmediatamente
+- Si usuario dice "Explorar más carreras" → nextPhase: "career_exploration" y continúa`;
+    } else {
+      systemPrompt += `
 
 OBJETIVO PRINCIPAL:
 - Descubrir qué carrera universitaria le conviene al usuario
@@ -190,14 +253,26 @@ ASPECTOS A EXPLORAR:
 6. Relación con la tecnología y herramientas
 7. Importancia del aspecto económico vs. satisfacción personal
 
+CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
+${context?.availableCareers?.slice(0, 8).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 120)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
+
+IMPORTANTE MATCHING: 
+- Programación/Código/Software → INGENIERÍA EN INFORMÁTICA, COMPUTACIÓN, SISTEMAS
+- Ciberseguridad → INGENIERÍA EN INFORMÁTICA
+- Medicina/Salud → MEDICINA, ENFERMERÍA  
+- Arte/Diseño → DISEÑO GRÁFICO, ARTES
+- SIEMPRE conecta los intereses del usuario con carreras relevantes`;
+    }
+
+    systemPrompt += `
+
 FASE ACTUAL: ${phase}
 USUARIO: ${userName || 'Usuario'}
 
-CARRERAS DISPONIBLES:
-${context?.availableCareers?.map(c => `- ${c.name}: ${c.description}`).join('\n') || 'Cargando carreras...'}
-
 CONVERSACIÓN HASTA AHORA:
 ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.response}`).join('\n\n') || 'Primera interacción'}`;
+
+    return systemPrompt;
   }
 
   private formatMessagesForGemini(messages: ConversationMessage[]): string {

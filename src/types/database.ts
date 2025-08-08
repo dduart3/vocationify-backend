@@ -35,9 +35,8 @@ export interface Career {
   social_score?: number;
   enterprising_score?: number;
   conventional_score?: number;
-  work_environment?: Record<string, unknown>;
-  key_skills?: Record<string, unknown>;
-  related_careers?: Record<string, unknown>;
+  work_environment?: string[];
+  key_skills?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -78,7 +77,7 @@ export interface TestSession {
   // New fields for conversational support
   session_type?: 'structured' | 'conversational';
   conversation_history?: ConversationMessage[];
-  current_phase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'complete';
+  current_phase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration' | 'complete';
   ai_provider?: string;
   confidence_level?: number;
 }

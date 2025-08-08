@@ -195,6 +195,7 @@ export class ConversationalSessionService {
     }
 
     // Update career recommendations in test_results if provided
+    console.log('🤖 AI Response career suggestions:', aiResponse.careerSuggestions);
     if (aiResponse.careerSuggestions?.length) {
       const careerRecommendations = aiResponse.careerSuggestions.map(suggestion => ({
         career_id: suggestion.careerId,
@@ -202,42 +203,87 @@ export class ConversationalSessionService {
         reasoning: suggestion.reasoning
       }));
 
-      await supabase
+      console.log('💾 Saving career recommendations to test_results:', careerRecommendations);
+      const { error: resultError } = await supabase
         .from('test_results')
         .upsert({
           session_id: sessionId,
           career_recommendations: careerRecommendations,
+          final_riasec_profile: aiResponse.riasecAssessment?.scores || { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
           created_at: new Date().toISOString()
         });
+        
+      if (resultError) {
+        console.error('❌ Error saving test results:', resultError);
+      } else {
+        console.log('✅ Career recommendations saved successfully');
+      }
+    } else {
+      console.log('⚠️ No career suggestions from AI to save');
     }
 
-    // Update session conversation and phase
+    // Prepare session update
+    const sessionUpdate: any = {
+      conversation_history: updatedHistory,
+      current_phase: aiResponse.nextPhase || session.current_phase,
+      confidence_level: aiResponse.riasecAssessment?.confidence || session.confidence_level,
+      updated_at: new Date().toISOString()
+    };
+
+    // If conversation is complete, update status and completion time
+    if (aiResponse.nextPhase === 'complete') {
+      sessionUpdate.status = 'completed';
+      sessionUpdate.completed_at = new Date().toISOString();
+    }
+
+    // Update session
     await supabase
       .from('test_sessions')
-      .update({
-        conversation_history: updatedHistory,
-        current_phase: aiResponse.nextPhase || session.current_phase,
-        confidence_level: aiResponse.riasecAssessment?.confidence || session.confidence_level,
-        updated_at: new Date().toISOString()
-      })
+      .update(sessionUpdate)
       .eq('id', sessionId);
 
     return aiResponse;
   }
 
-  async getSessionResults(sessionId: string) {
-    const { data: session, error } = await supabase
+  async getSessionResults(sessionId: string): Promise<SessionResults> {
+    // Get session data
+    const { data: session, error: sessionError } = await supabase
       .from('test_sessions')
       .select('*')
       .eq('id', sessionId)
       .single();
 
-    if (error || !session) {
+    if (sessionError || !session) {
       throw new Error('Session not found');
     }
 
-    // Get full career details for suggestions
-    const careerIds = session.career_recommendations?.map((s: CareerRecommendation) => s.career_id) || [];
+    // Get RIASEC scores from session_riasec_scores table
+    const { data: riasecData, error: riasecError } = await supabase
+      .from('session_riasec_scores')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    // Get career recommendations from test_results table  
+    const { data: testResults, error: resultsError } = await supabase
+      .from('test_results')
+      .select('career_recommendations')
+      .eq('session_id', sessionId)
+      .single();
+
+    // Prepare RIASEC scores with fallback
+    const riasecScores: RiasecScores = riasecData ? {
+      R: riasecData.realistic_score || 0,
+      I: riasecData.investigative_score || 0,
+      A: riasecData.artistic_score || 0,
+      S: riasecData.social_score || 0,
+      E: riasecData.enterprising_score || 0,
+      C: riasecData.conventional_score || 0
+    } : { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 }; // Default to 50s if no scores
+
+    // Get career details for recommendations
+    const careerRecommendations: CareerRecommendation[] = testResults?.career_recommendations || [];
+    const careerIds = careerRecommendations.map(rec => rec.career_id).filter(Boolean);
     
     let careerDetails: Career[] = [];
     if (careerIds.length > 0) {
@@ -248,12 +294,7 @@ export class ConversationalSessionService {
           primary_riasec_type, riasec_code,
           realistic_score, investigative_score, artistic_score,
           social_score, enterprising_score, conventional_score,
-          work_environment, key_skills,
-          career_schools (
-            schools (
-              id, name, location, website
-            )
-          )
+          work_environment, key_skills
         `)
         .in('id', careerIds);
 
@@ -262,16 +303,16 @@ export class ConversationalSessionService {
 
     const results: SessionResults = {
       sessionId: session.id,
-      riasecScores: session.riasec_scores as RiasecScores,
-      confidenceLevel: session.confidence_level,
+      riasecScores,
+      confidenceLevel: session.confidence_level || 80,
       conversationPhase: session.current_phase,
-      careerRecommendations: session.career_recommendations?.map((suggestion: CareerRecommendation) => {
+      careerRecommendations: careerRecommendations.map((suggestion: CareerRecommendation) => {
         const career = careerDetails.find(c => c.id === suggestion.career_id);
         return {
           ...suggestion,
           career: career || null
         };
-      }) || [],
+      }),
       conversationHistory: session.conversation_history as ConversationMessage[]
     };
 
@@ -300,7 +341,7 @@ export class ConversationalSessionService {
         updated_at: new Date().toISOString()
       };
 
-      if (newPhase && ['greeting', 'exploration', 'assessment', 'recommendation', 'complete'].includes(newPhase)) {
+      if (newPhase && ['greeting', 'exploration', 'assessment', 'recommendation', 'career_exploration', 'complete'].includes(newPhase)) {
         updateData.current_phase = newPhase as TestSession['current_phase'];
       }
 

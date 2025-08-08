@@ -10,7 +10,7 @@ export interface ConversationRequest {
   context?: {
     userId?: string;
     sessionId?: string;
-    currentPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation';
+    currentPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration';
     userProfile?: {
       name?: string;
       age?: number;  
@@ -33,7 +33,7 @@ export interface ConversationRequest {
 
 export interface ConversationResponse {
   message: string;
-  intent?: 'question' | 'clarification' | 'assessment' | 'recommendation' | 'farewell';
+  intent?: 'question' | 'clarification' | 'assessment' | 'recommendation' | 'completion_check' | 'farewell';
   suggestedFollowUp?: string[];
   riasecAssessment?: {
     scores: Record<string, number>;
@@ -46,7 +46,7 @@ export interface ConversationResponse {
     confidence: number;
     reasoning: string;
   }>;
-  nextPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'complete';
+  nextPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration' | 'complete';
 }
 
 export abstract class AIServiceInterface {
