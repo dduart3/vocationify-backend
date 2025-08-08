@@ -162,12 +162,13 @@ ${context?.availableCareers?.slice(0, 10).map(c => `- ID: ${c.id} | ${c.name}: $
     } else {
       systemPrompt += `
 
-OBJETIVO: Descubrir perfil vocacional con UNA pregunta por vez y recomendar carreras MUY RELEVANTES.
+OBJETIVO: Descubrir perfil vocacional RÁPIDAMENTE y recomendar carreras MUY RELEVANTES.
 
 REGLAS:
 - UNA pregunta por mensaje, nunca múltiples
+- EFICIENCIA: Después de 4-6 intercambios, procede a recomendaciones
+- Solo hace preguntas esenciales: intereses principales, habilidades, ambiente de trabajo
 - Analiza cuidadosamente las descripciones de carreras vs intereses del usuario
-- Selecciona carreras con mayor relevancia temática + RIASEC match
 
 CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
 ${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode}, I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando...'}
