@@ -23,6 +23,7 @@ interface SessionResults {
 
 export class ConversationalSessionService {
   private aiService = AIServiceFactory.getDefaultService();
+  private backupAiService = AIServiceFactory.getBackupService();
 
   async createConversationalSession(userId?: string): Promise<{
     sessionId: string;
@@ -53,13 +54,13 @@ export class ConversationalSessionService {
       .not('primary_riasec_type', 'is', null)
       .limit(50);
 
-    // Generate greeting with AI
-    const greeting = await this.aiService.generateConversationalResponse({
+    // Generate greeting with AI (with failover support)
+    const greetingRequest = {
       messages: [],
       context: {
         sessionId: session.id,
         userId,
-        currentPhase: 'greeting',
+        currentPhase: 'greeting' as const,
         availableCareers: careers?.map(c => ({
           id: c.id,
           name: c.name || '',
@@ -75,7 +76,37 @@ export class ConversationalSessionService {
           }
         })) || []
       }
-    });
+    };
+
+    let greeting;
+    try {
+      console.log(`🤖 Calling primary AI service (${this.aiService.constructor.name}) for session greeting`);
+      greeting = await this.aiService.generateConversationalResponse(greetingRequest);
+      console.log(`✅ Primary AI service generated greeting successfully`);
+    } catch (primaryError) {
+      console.error(`❌ Primary AI service failed for greeting:`, primaryError);
+      
+      try {
+        console.log(`🔄 Attempting backup AI service (${this.backupAiService.constructor.name}) for greeting`);
+        greeting = await this.backupAiService.generateConversationalResponse(greetingRequest);
+        console.log(`✅ Backup AI service generated greeting successfully`);
+      } catch (backupError) {
+        console.error(`❌ Backup AI service also failed for greeting:`, backupError);
+        
+        // Both failed, use a hardcoded greeting
+        greeting = {
+          message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional. Estoy aquí para ayudarte a descubrir qué carrera universitaria sería perfecta para ti. ¿Qué tipo de actividades realmente disfrutas hacer?",
+          intent: "question" as const,
+          suggestedFollowUp: [
+            "¿Prefieres trabajar con tus manos o con ideas?",
+            "¿Te gusta resolver problemas complejos?",
+            "¿Disfrutas ayudar a otras personas?"
+          ],
+          nextPhase: "exploration" as const
+        };
+        console.log('🔄 Using hardcoded greeting - both AI services failed');
+      }
+    }
 
     // Save AI greeting to conversation history
     const greetingMessage: ConversationMessage = {
@@ -168,25 +199,50 @@ export class ConversationalSessionService {
 
     let aiResponse;
     try {
-      console.log(`🤖 Calling AI service (${this.aiService.constructor.name}) for session ${sessionId}`);
+      console.log(`🤖 Calling primary AI service (${this.aiService.constructor.name}) for session ${sessionId}`);
       aiResponse = await this.aiService.generateConversationalResponse(request);
-      console.log(`✅ AI service responded successfully`);
-    } catch (error) {
-      console.error(`❌ AI service failed for session ${sessionId}:`, error);
-      console.error('📋 Request context:', {
+      console.log(`✅ Primary AI service responded successfully`);
+    } catch (primaryError) {
+      console.error(`❌ Primary AI service failed for session ${sessionId}:`, primaryError);
+      console.error('📋 Primary service error context:', {
         sessionId,
         messageCount: request.messages.length,
         currentPhase: request.context?.currentPhase,
-        careersAvailable: request.context?.availableCareers?.length || 0
+        careersAvailable: request.context?.availableCareers?.length || 0,
+        errorType: primaryError instanceof Error ? primaryError.name : typeof primaryError,
+        errorMessage: primaryError instanceof Error ? primaryError.message : String(primaryError)
       });
       
-      // Return fallback response
-      aiResponse = {
-        message: "Disculpa, tuve un problema técnico. ¿Podrías repetir tu respuesta? Estoy aquí para ayudarte con tu orientación vocacional.",
-        intent: 'clarification' as const,
-        nextPhase: request.context?.currentPhase || 'exploration' as const
-      };
-      console.log('🔄 Using fallback response due to AI service failure');
+      // Try backup service
+      try {
+        console.log(`🔄 Attempting backup AI service (${this.backupAiService.constructor.name}) for session ${sessionId}`);
+        aiResponse = await this.backupAiService.generateConversationalResponse(request);
+        console.log(`✅ Backup AI service responded successfully`);
+        
+        // Update session to track that backup was used
+        await supabase
+          .from('test_sessions')
+          .update({ 
+            ai_provider: `${process.env.AI_PROVIDER || 'gemini'}_backup_used`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sessionId);
+          
+      } catch (backupError) {
+        console.error(`❌ Backup AI service also failed for session ${sessionId}:`, backupError);
+        console.error('📋 Backup service error context:', {
+          errorType: backupError instanceof Error ? backupError.name : typeof backupError,
+          errorMessage: backupError instanceof Error ? backupError.message : String(backupError)
+        });
+        
+        // Both services failed, use fallback response
+        aiResponse = {
+          message: "Disculpa, tuve un problema técnico. ¿Podrías repetir tu respuesta? Estoy aquí para ayudarte con tu orientación vocacional.",
+          intent: 'clarification' as const,
+          nextPhase: request.context?.currentPhase || 'exploration' as const
+        };
+        console.log('🔄 Using manual fallback response - both AI services failed');
+      }
     }
 
     // Add AI response to history

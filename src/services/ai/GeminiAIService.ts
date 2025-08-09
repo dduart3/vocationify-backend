@@ -10,10 +10,11 @@ export class GeminiAIService extends AIServiceInterface {
   }
 
   async generateConversationalResponse(request: ConversationRequest): Promise<ConversationResponse> {
-    const systemPrompt = this.buildSystemPrompt(request.context);
-    const conversationHistory = this.formatMessagesForGemini(request.messages);
-    
-    const prompt = `${systemPrompt}
+    return this.executeWithRetry(async () => {
+      const systemPrompt = this.buildSystemPrompt(request.context);
+      const conversationHistory = this.formatMessagesForGemini(request.messages);
+      
+      const prompt = `${systemPrompt}
 
 HISTORIAL DE CONVERSACIÓN:
 ${conversationHistory}
@@ -36,10 +37,12 @@ FASES DETALLADAS:
    - Lee las descripciones de carreras para encontrar las más relevantes
    - Considera tanto RIASEC como la compatibilidad temática
    - Justifica cada recomendación con conexiones específicas a sus intereses
-4. EXPLORACIÓN DE CARRERAS: Responder preguntas específicas del usuario
-5. FINALIZACIÓN: Cuando usuario confirme
+   - IMPORTANTE: Después de dar recomendaciones, SIEMPRE pregunta si quieren saber más
+4. EXPLORACIÓN DE CARRERAS: Responder preguntas específicas del usuario sobre las carreras recomendadas
+5. FINALIZACIÓN: Cuando usuario confirme estar satisfecho
 
 IMPORTANTE: NUNCA hagas múltiples preguntas en un solo mensaje
+CRÍTICO: Cuando des recomendaciones de carreras (intent="recommendation"), SIEMPRE termina tu mensaje con una pregunta como "¿Te gustaría conocer más detalles sobre alguna de estas carreras?" o similar
 
 FORMATO DE RESPUESTA (JSON):
 {
@@ -64,7 +67,6 @@ FORMATO DE RESPUESTA (JSON):
 
 Responde SOLO con JSON válido.`;
 
-    try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.0-flash-001',
         contents: prompt
@@ -114,27 +116,17 @@ Responde SOLO con JSON válido.`;
       }
       
       return parsedResponse;
-    } catch (error) {
-      console.error('❌ Gemini AI Service Error:', error);
-      console.error('📋 Error details:', {
-        model: 'gemini-2.0-flash-001',
-        messageCount: request.messages.length,
-        currentPhase: request.context?.currentPhase,
-        errorType: error instanceof Error ? error.name : typeof error,
-        errorMessage: error instanceof Error ? error.message : String(error)
-      });
-      console.log('🔄 Returning fallback response due to Gemini API failure');
-      return this.getFallbackResponse();
-    }
+    }, 'generateConversationalResponse');
   }
 
   async assessRiasecFromConversation(messages: ConversationMessage[]): Promise<Record<string, number>> {
-    const conversationText = messages
-      .filter(msg => msg.role === 'user')
-      .map(msg => msg.content)
-      .join('\n');
+    return this.executeWithRetry(async () => {
+      const conversationText = messages
+        .filter(msg => msg.role === 'user')
+        .map(msg => msg.content)
+        .join('\n');
 
-    const prompt = `Analiza esta conversación y proporciona scores RIASEC (0-100):
+      const prompt = `Analiza esta conversación y proporciona scores RIASEC (0-100):
 
 CONVERSACIÓN:
 ${conversationText}
@@ -149,7 +141,6 @@ CRITERIOS RIASEC:
 
 Responde SOLO con JSON: {"R": score, "I": score, "A": score, "S": score, "E": score, "C": score}`;
 
-    try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.0-flash-001',
         contents: prompt
@@ -158,23 +149,15 @@ Responde SOLO con JSON: {"R": score, "I": score, "A": score, "S": score, "E": sc
       const content = response.text || '';
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       return JSON.parse(jsonMatch ? jsonMatch[0] : content);
-    } catch (error) {
-      console.error('❌ Gemini RIASEC Assessment Error:', error);
-      console.error('📋 Assessment context:', {
-        conversationLength: conversationText.length,
-        messageCount: messages.length,
-        errorType: error instanceof Error ? error.name : typeof error
-      });
-      console.log('🔄 Using default RIASEC scores due to assessment failure');
-      return { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 };
-    }
+    }, 'assessRiasecFromConversation', { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 });
   }
 
   async generateContextualQuestion(context: ConversationRequest['context']): Promise<string> {
-    const phase = context?.currentPhase || 'exploration';
-    const previousResponses = context?.userProfile?.previousResponses || [];
-    
-    const prompt = `Genera una pregunta conversacional para orientación vocacional.
+    return this.executeWithRetry(async () => {
+      const phase = context?.currentPhase || 'exploration';
+      const previousResponses = context?.userProfile?.previousResponses || [];
+      
+      const prompt = `Genera una pregunta conversacional para orientación vocacional.
 
 CONTEXTO:
 - Fase actual: ${phase}
@@ -188,17 +171,13 @@ TIPOS DE PREGUNTAS POR FASE:
 
 Genera UNA pregunta natural y conversacional en español. Responde solo con la pregunta.`;
 
-    try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.0-flash-001',
         contents: prompt
       });
 
       return response.text?.trim() || "¿Qué tipo de actividades disfrutas más?";
-    } catch (error) {
-      console.error('Question Generation Error:', error);
-      return "¿Qué tipo de actividades disfrutas más en tu tiempo libre?";
-    }
+    }, 'generateContextualQuestion', "¿Qué tipo de actividades disfrutas más en tu tiempo libre?");
   }
 
   private buildSystemPrompt(context: ConversationRequest['context']): string {
@@ -315,5 +294,105 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
         reasoning: 'Respuesta de fallback - sin evaluación aún'
       }
     };
+  }
+
+  /**
+   * Executes an async function with exponential backoff retry logic
+   * Handles Gemini API overload (503) and rate limit errors specifically
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    fallbackValue?: T,
+    maxRetries: number = 3,
+    baseDelayMs: number = 1000
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/${maxRetries} for ${operationName}`);
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Check if this is a retryable error
+        const isRetryableError = this.isRetryableError(error);
+        const isLastAttempt = attempt === maxRetries;
+
+        console.error(`❌ Attempt ${attempt}/${maxRetries} failed for ${operationName}:`, {
+          errorType: lastError.name,
+          errorMessage: lastError.message,
+          isRetryable: isRetryableError,
+          isLastAttempt
+        });
+
+        // If it's not retryable or last attempt, break
+        if (!isRetryableError || isLastAttempt) {
+          console.log(`🚫 Not retrying ${operationName} - ${isRetryableError ? 'max attempts reached' : 'non-retryable error'}`);
+          break;
+        }
+
+        // Calculate exponential backoff delay
+        const delay = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 1000; // Add jitter
+        console.log(`⏳ Retrying ${operationName} in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`);
+        
+        await this.sleep(delay);
+      }
+    }
+
+    // All retries failed, log comprehensive error and return fallback
+    console.error(`🔥 All retry attempts failed for ${operationName}. Final error:`, {
+      errorType: lastError?.name || 'Unknown',
+      errorMessage: lastError?.message || 'Unknown error',
+      totalAttempts: maxRetries,
+      fallbackAvailable: fallbackValue !== undefined
+    });
+
+    // Return fallback value if provided, otherwise throw the last error
+    if (fallbackValue !== undefined) {
+      console.log(`🔄 Returning fallback value for ${operationName}`);
+      return fallbackValue;
+    }
+
+    throw lastError || new Error(`Failed after ${maxRetries} attempts`);
+  }
+
+  /**
+   * Determines if an error should trigger a retry
+   */
+  private isRetryableError(error: any): boolean {
+    const errorMessage = String(error?.message || error || '').toLowerCase();
+    const errorStatus = error?.status || error?.response?.status;
+    
+    // Check for specific retryable conditions
+    const isOverloaded = errorMessage.includes('overloaded') || errorStatus === 503;
+    const isRateLimit = errorMessage.includes('rate limit') || errorStatus === 429;
+    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT');
+    const isNetworkError = errorMessage.includes('network') || errorMessage.includes('ECONNRESET');
+    const isInternalError = errorStatus === 500 || errorStatus === 502 || errorStatus === 504;
+
+    const shouldRetry = isOverloaded || isRateLimit || isTimeout || isNetworkError || isInternalError;
+    
+    if (shouldRetry) {
+      console.log(`🔄 Error is retryable:`, {
+        isOverloaded,
+        isRateLimit, 
+        isTimeout,
+        isNetworkError,
+        isInternalError,
+        errorStatus,
+        errorMessage: errorMessage.substring(0, 100)
+      });
+    }
+
+    return shouldRetry;
+  }
+
+  /**
+   * Helper method to sleep for specified milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
