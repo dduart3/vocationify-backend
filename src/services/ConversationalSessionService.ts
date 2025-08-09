@@ -287,7 +287,10 @@ export class ConversationalSessionService {
           session_id: sessionId,
           career_recommendations: careerRecommendations,
           final_riasec_profile: aiResponse.riasecAssessment?.scores || { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'session_id'
         });
         
       if (resultError) {
