@@ -17,7 +17,12 @@ interface SessionResults {
   riasecScores: RiasecScores;
   confidenceLevel: number;
   conversationPhase: TestSession['current_phase'];
-  careerRecommendations: Array<CareerRecommendation & { career: Career | null }>;
+  careerRecommendations: Array<{
+    careerId: string;
+    name: string;
+    confidence: number;
+    reasoning: string;
+  }>;
   conversationHistory: ConversationMessage[];
 }
 
@@ -430,8 +435,10 @@ export class ConversationalSessionService {
       careerRecommendations: careerRecommendations.map((suggestion: CareerRecommendation) => {
         const career = careerDetails.find(c => c.id === suggestion.career_id);
         return {
-          ...suggestion,
-          career: career || null
+          careerId: suggestion.career_id,
+          name: career?.name || 'Carrera no disponible',
+          confidence: suggestion.confidence,
+          reasoning: suggestion.reasoning
         };
       }),
       conversationHistory: session.conversation_history as ConversationMessage[]
