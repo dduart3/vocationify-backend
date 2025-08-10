@@ -134,18 +134,11 @@ Responde SOLO con JSON válido.`;
         nextPhase: parsedResponse.nextPhase 
       });
       
-      // Ensure nextPhase is set with intelligent detection
+      // Ensure nextPhase is set with intelligent detection (but don't override AI's decision)
       if (!parsedResponse.nextPhase) {
         console.log('⚠️ Missing nextPhase, attempting intelligent detection');
         
-        // If we have careerSuggestions, this is likely final recommendations
-        if (parsedResponse.careerSuggestions && parsedResponse.careerSuggestions.length > 0) {
-          console.log('🔧 Found careerSuggestions - setting nextPhase to complete');
-          parsedResponse.nextPhase = 'complete';
-        } else if (parsedResponse.intent === 'recommendation') {
-          console.log('🔧 Intent is recommendation - setting nextPhase to complete');
-          parsedResponse.nextPhase = 'complete';
-        } else if (parsedResponse.intent === 'completion_check') {
+        if (parsedResponse.intent === 'completion_check') {
           console.log('🔧 Intent is completion_check - staying in career_exploration');
           parsedResponse.nextPhase = 'career_exploration';
         } else {
@@ -333,7 +326,15 @@ PROCESO DE RECOMENDACIÓN:
 2. Examina las descripciones de carreras para encontrar coincidencias temáticas
 3. Considera los scores RIASEC de las carreras vs el perfil del usuario
 4. Selecciona las 3 carreras con mayor relevancia combinada (tema + RIASEC)
-5. Explica claramente por qué cada carrera encaja con SUS intereses específicos`;
+5. Explica claramente por qué cada carrera encaja con SUS intereses específicos
+
+IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
+- PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "opciones preliminares"
+- DESPUÉS de dar las 3 carreras, SIEMPRE:
+  * intent: "recommendation" 
+  * nextPhase: "career_exploration" (NO "complete")
+  * suggestedFollowUp: ["¿Te gustaría conocer más detalles sobre estas carreras?", "¿Prefieres que te dé otras alternativas?", "¿Quieres ver los resultados finales?"]
+- SOLO usa nextPhase: "complete" cuando el usuario pida explícitamente resultados finales`;
     }
 
     systemPrompt += `

@@ -310,9 +310,47 @@ export class ConversationalSessionService {
       updated_at: new Date().toISOString()
     };
 
-    // If conversation is complete, update status and completion time
+    // If conversation is complete, perform final RIASEC assessment and update status
     if (aiResponse.nextPhase === 'complete') {
-      console.log(`✅ Session ${sessionId} marked as complete - updating status to 'completed'`);
+      console.log(`✅ Session ${sessionId} marked as complete - performing final RIASEC assessment`);
+      
+      try {
+        // Perform comprehensive RIASEC assessment from entire conversation
+        const finalRiasecScores = await this.aiService.assessRiasecFromConversation(updatedHistory);
+        console.log('📊 Final RIASEC assessment completed:', finalRiasecScores);
+        
+        // Update RIASEC scores in database with final assessment
+        await supabase
+          .from('session_riasec_scores')
+          .upsert({
+            session_id: sessionId,
+            realistic_score: finalRiasecScores.R || 0,
+            investigative_score: finalRiasecScores.I || 0,
+            artistic_score: finalRiasecScores.A || 0,
+            social_score: finalRiasecScores.S || 0,
+            enterprising_score: finalRiasecScores.E || 0,
+            conventional_score: finalRiasecScores.C || 0,
+            updated_at: new Date().toISOString()
+          });
+          
+        console.log('✅ Final RIASEC scores saved to database');
+        
+        // Update the test results with final RIASEC profile
+        await supabase
+          .from('test_results')
+          .update({
+            final_riasec_profile: finalRiasecScores,
+            updated_at: new Date().toISOString()
+          })
+          .eq('session_id', sessionId);
+          
+        console.log('✅ Final RIASEC profile updated in test results');
+        
+      } catch (error) {
+        console.error('❌ Error during final RIASEC assessment:', error);
+        // Continue with completion even if RIASEC assessment fails
+      }
+      
       sessionUpdate.status = 'completed';
       sessionUpdate.completed_at = new Date().toISOString();
     } else {
