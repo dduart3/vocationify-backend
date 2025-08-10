@@ -90,12 +90,34 @@ Responde SOLO con JSON válido.`;
       // Try to fix common JSON issues
       if (!jsonText.trim().endsWith('}')) {
         console.log('⚠️ JSON appears truncated, attempting to fix...');
-        // Find the last complete field and close the JSON
-        const lastCompleteField = jsonText.lastIndexOf(',');
-        if (lastCompleteField > 0) {
-          jsonText = jsonText.substring(0, lastCompleteField) + '}';
-          console.log('🔧 Fixed JSON:', jsonText);
+        
+        // Check if we have nextPhase field in the truncated JSON
+        const hasNextPhase = jsonText.includes('"nextPhase"');
+        const hasCareerSuggestions = jsonText.includes('"careerSuggestions"');
+        
+        // Try to preserve critical fields during repair
+        if (hasCareerSuggestions && !hasNextPhase) {
+          // If we have careerSuggestions but no nextPhase, this suggests final recommendations
+          console.log('🔧 Detected final recommendations without nextPhase - adding complete phase');
+          // Add the missing nextPhase before closing
+          const lastValidComma = jsonText.lastIndexOf(',');
+          if (lastValidComma > 0) {
+            jsonText = jsonText.substring(0, lastValidComma) + ', "nextPhase": "complete"}';
+          } else {
+            // No comma found, try to add after the last complete field
+            jsonText = jsonText.replace(/}$/, ', "nextPhase": "complete"}');
+            if (!jsonText.includes('"nextPhase"')) {
+              jsonText = jsonText.substring(0, jsonText.lastIndexOf('}')) + ', "nextPhase": "complete"}';
+            }
+          }
+        } else {
+          // Default repair - find the last complete field and close the JSON
+          const lastCompleteField = jsonText.lastIndexOf(',');
+          if (lastCompleteField > 0) {
+            jsonText = jsonText.substring(0, lastCompleteField) + '}';
+          }
         }
+        console.log('🔧 Fixed JSON:', jsonText);
       }
       
       let parsedResponse: ConversationResponse;
@@ -112,10 +134,54 @@ Responde SOLO con JSON válido.`;
         nextPhase: parsedResponse.nextPhase 
       });
       
-      // Ensure nextPhase is set
+      // Ensure nextPhase is set with intelligent detection
       if (!parsedResponse.nextPhase) {
-        console.log('⚠️ Missing nextPhase, setting to exploration');
-        parsedResponse.nextPhase = 'exploration';
+        console.log('⚠️ Missing nextPhase, attempting intelligent detection');
+        
+        // If we have careerSuggestions, this is likely final recommendations
+        if (parsedResponse.careerSuggestions && parsedResponse.careerSuggestions.length > 0) {
+          console.log('🔧 Found careerSuggestions - setting nextPhase to complete');
+          parsedResponse.nextPhase = 'complete';
+        } else if (parsedResponse.intent === 'recommendation') {
+          console.log('🔧 Intent is recommendation - setting nextPhase to complete');
+          parsedResponse.nextPhase = 'complete';
+        } else if (parsedResponse.intent === 'completion_check') {
+          console.log('🔧 Intent is completion_check - staying in career_exploration');
+          parsedResponse.nextPhase = 'career_exploration';
+        } else {
+          console.log('🔧 Default fallback - setting nextPhase to exploration');
+          parsedResponse.nextPhase = 'exploration';
+        }
+      }
+      
+      // Additional check: If AI gave career recommendations but still set nextPhase to career_exploration,
+      // check if this might be a completion scenario based on user's last message
+      if (parsedResponse.nextPhase === 'career_exploration' && 
+          parsedResponse.careerSuggestions && 
+          parsedResponse.careerSuggestions.length > 0) {
+        
+        const lastUserMessage = request.messages[request.messages.length - 1]?.content?.toLowerCase() || '';
+        const completionSignals = [
+          'ver resultados finales',
+          'los resultados finales',
+          'me gustaría ver los resultados',
+          'quiero ver mis resultados',
+          'quiero los resultados',
+          'ver los resultados',
+          'estoy satisfecho',
+          'terminar',
+          'ya decidí',
+          'resultados finales'
+        ];
+        
+        const hasCompletionSignal = completionSignals.some(signal => 
+          lastUserMessage.includes(signal)
+        );
+        
+        if (hasCompletionSignal) {
+          console.log('🔧 Detected completion signal in user message despite AI returning career_exploration - overriding to complete');
+          parsedResponse.nextPhase = 'complete';
+        }
       }
       
       return parsedResponse;
@@ -229,8 +295,16 @@ LÓGICA DE FINALIZACIÓN INTELIGENTE:
   * Ha estado en esta fase por 5+ intercambios
 - ENTONCES usa intent: "completion_check" y pregunta si quiere ver resultados finales
 - Proporciona botones: ["Ver resultados finales", "Explorar más carreras"]
-- SOLO usa nextPhase: "complete" cuando el usuario confirme explícitamente que quiere terminar
-- Si usuario dice "Ver resultados finales" → nextPhase: "complete" inmediatamente
+
+DETECCIÓN DE FINALIZACIÓN CRÍTICA:
+- Si usuario dice CUALQUIER variación de querer ver resultados finales:
+  * "Ver resultados finales"
+  * "Me gustaría ver los resultados finales"
+  * "Quiero ver mis resultados"
+  * "Estoy satisfecho, ver resultados"
+  * "Terminar y ver resultados"
+  * "Ya decidí, quiero los resultados"
+- → nextPhase: "complete" INMEDIATAMENTE
 - Si usuario dice "Explorar más carreras" → nextPhase: "career_exploration" y continúa`;
     } else {
       systemPrompt += `

@@ -34,7 +34,100 @@ export class OpenAIService extends AIServiceInterface {
         throw new Error("No response from OpenAI");
       }
 
-      return JSON.parse(content) as ConversationResponse;
+      console.log('🤖 Raw OpenAI response:', content);
+      
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.log('❌ No JSON found in OpenAI response, using fallback');
+        return this.getFallbackResponse();
+      }
+      
+      let jsonText = jsonMatch[0];
+      console.log('📄 Extracted JSON:', jsonText);
+      
+      // Handle truncated JSON responses
+      if (!jsonText.trim().endsWith('}')) {
+        console.log('⚠️ OpenAI JSON appears truncated, attempting to fix...');
+        
+        const hasNextPhase = jsonText.includes('"nextPhase"');
+        const hasCareerSuggestions = jsonText.includes('"careerSuggestions"');
+        
+        if (hasCareerSuggestions && !hasNextPhase) {
+          console.log('🔧 Detected final recommendations without nextPhase - adding complete phase');
+          const lastValidComma = jsonText.lastIndexOf(',');
+          if (lastValidComma > 0) {
+            jsonText = jsonText.substring(0, lastValidComma) + ', "nextPhase": "complete"}';
+          } else {
+            jsonText = jsonText.substring(0, jsonText.lastIndexOf('}')) + ', "nextPhase": "complete"}';
+          }
+        } else {
+          const lastCompleteField = jsonText.lastIndexOf(',');
+          if (lastCompleteField > 0) {
+            jsonText = jsonText.substring(0, lastCompleteField) + '}';
+          }
+        }
+        console.log('🔧 Fixed OpenAI JSON:', jsonText);
+      }
+      
+      let parsedResponse: ConversationResponse;
+      try {
+        parsedResponse = JSON.parse(jsonText) as ConversationResponse;
+      } catch (parseError) {
+        console.error('❌ OpenAI JSON parse error:', parseError);
+        return this.getFallbackResponse();
+      }
+      
+      // Ensure nextPhase is set with intelligent detection
+      if (!parsedResponse.nextPhase) {
+        console.log('⚠️ Missing nextPhase in OpenAI response, attempting intelligent detection');
+        
+        if (parsedResponse.careerSuggestions && parsedResponse.careerSuggestions.length > 0) {
+          console.log('🔧 Found careerSuggestions - setting nextPhase to complete');
+          parsedResponse.nextPhase = 'complete';
+        } else if (parsedResponse.intent === 'recommendation') {
+          console.log('🔧 Intent is recommendation - setting nextPhase to complete');
+          parsedResponse.nextPhase = 'complete';
+        } else if (parsedResponse.intent === 'completion_check') {
+          console.log('🔧 Intent is completion_check - staying in career_exploration');
+          parsedResponse.nextPhase = 'career_exploration';
+        } else {
+          console.log('🔧 Default fallback - setting nextPhase to exploration');
+          parsedResponse.nextPhase = 'exploration';
+        }
+      }
+      
+      // Additional check: If AI gave career recommendations but still set nextPhase to career_exploration,
+      // check if this might be a completion scenario based on user's last message
+      if (parsedResponse.nextPhase === 'career_exploration' && 
+          parsedResponse.careerSuggestions && 
+          parsedResponse.careerSuggestions.length > 0) {
+        
+        const lastUserMessage = request.messages[request.messages.length - 1]?.content?.toLowerCase() || '';
+        const completionSignals = [
+          'ver resultados finales',
+          'los resultados finales',
+          'me gustaría ver los resultados',
+          'quiero ver mis resultados',
+          'quiero los resultados',
+          'ver los resultados',
+          'estoy satisfecho',
+          'terminar',
+          'ya decidí',
+          'resultados finales'
+        ];
+        
+        const hasCompletionSignal = completionSignals.some(signal => 
+          lastUserMessage.includes(signal)
+        );
+        
+        if (hasCompletionSignal) {
+          console.log('🔧 OpenAI: Detected completion signal in user message despite AI returning career_exploration - overriding to complete');
+          parsedResponse.nextPhase = 'complete';
+        }
+      }
+
+      return parsedResponse;
     } catch (error) {
       console.error('❌ OpenAI Service Error:', error);
       console.error('📋 Error details:', {
@@ -154,7 +247,13 @@ CONTEXTO ACTUAL - EXPLORACIÓN DE CARRERAS:
 - NUNCA fuerces recomendaciones que no sean realmente similares
 - FINALIZACIÓN: Detecta si usuario está listo (3+ carreras exploradas, decisión clara)
 - Usa intent: "completion_check" para confirmar antes de nextPhase: "complete"
-- Si usuario dice "Ver resultados finales" → nextPhase: "complete"
+
+DETECCIÓN DE FINALIZACIÓN CRÍTICA:
+- Si usuario dice CUALQUIER variación de querer ver resultados finales:
+  * "Ver resultados finales" / "Me gustaría ver los resultados finales"
+  * "Quiero ver mis resultados" / "Estoy satisfecho, ver resultados"  
+  * "Terminar y ver resultados" / "Ya decidí, quiero los resultados"
+- → nextPhase: "complete" INMEDIATAMENTE
 - Si usuario dice "Explorar más carreras" → nextPhase: "career_exploration"
 
 CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):

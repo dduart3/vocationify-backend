@@ -312,8 +312,11 @@ export class ConversationalSessionService {
 
     // If conversation is complete, update status and completion time
     if (aiResponse.nextPhase === 'complete') {
+      console.log(`✅ Session ${sessionId} marked as complete - updating status to 'completed'`);
       sessionUpdate.status = 'completed';
       sessionUpdate.completed_at = new Date().toISOString();
+    } else {
+      console.log(`📝 Session ${sessionId} continues with phase: ${aiResponse.nextPhase}`);
     }
 
     // Update session
