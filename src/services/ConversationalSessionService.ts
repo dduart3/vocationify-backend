@@ -52,6 +52,26 @@ export class ConversationalSessionService {
       throw new Error(`Failed to create session: ${error.message}`);
     }
 
+    // Initialize RIASEC scores for the session (starting with 0s)
+    const { error: riasecError } = await supabase
+      .from('session_riasec_scores')
+      .insert({
+        session_id: session.id,
+        realistic_score: 0,
+        investigative_score: 0,
+        artistic_score: 0,
+        social_score: 0,
+        enterprising_score: 0,
+        conventional_score: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (riasecError) {
+      console.error('Warning: Failed to initialize RIASEC scores:', riasecError);
+      // Don't throw error - session can still work without initial RIASEC scores
+    }
+
     // Get available careers for context  
     const { data: careers } = await supabase
       .from('careers')
@@ -262,10 +282,9 @@ export class ConversationalSessionService {
     // Update RIASEC scores in session_riasec_scores table if provided
     if (aiResponse.riasecAssessment?.scores) {
       const scores = aiResponse.riasecAssessment.scores;
-      await supabase
+      const { error: incrementalRiasecError } = await supabase
         .from('session_riasec_scores')
-        .upsert({
-          session_id: sessionId,
+        .update({
           realistic_score: scores.R || 0,
           investigative_score: scores.I || 0,
           artistic_score: scores.A || 0,
@@ -273,7 +292,14 @@ export class ConversationalSessionService {
           enterprising_score: scores.E || 0,
           conventional_score: scores.C || 0,
           updated_at: new Date().toISOString()
-        });
+        })
+        .eq('session_id', sessionId);
+        
+      if (incrementalRiasecError) {
+        console.error('⚠️ Failed to update incremental RIASEC scores:', incrementalRiasecError);
+      } else {
+        console.log('✅ Incremental RIASEC scores updated');
+      }
     }
 
     // Update career recommendations in test_results if provided
@@ -325,10 +351,9 @@ export class ConversationalSessionService {
         console.log('📊 Final RIASEC assessment completed:', finalRiasecScores);
         
         // Update RIASEC scores in database with final assessment
-        await supabase
+        const { error: riasecUpdateError } = await supabase
           .from('session_riasec_scores')
-          .upsert({
-            session_id: sessionId,
+          .update({
             realistic_score: finalRiasecScores.R || 0,
             investigative_score: finalRiasecScores.I || 0,
             artistic_score: finalRiasecScores.A || 0,
@@ -336,12 +361,17 @@ export class ConversationalSessionService {
             enterprising_score: finalRiasecScores.E || 0,
             conventional_score: finalRiasecScores.C || 0,
             updated_at: new Date().toISOString()
-          });
+          })
+          .eq('session_id', sessionId);
           
-        console.log('✅ Final RIASEC scores saved to database');
+        if (riasecUpdateError) {
+          console.error('❌ Failed to save final RIASEC scores:', riasecUpdateError);
+        } else {
+          console.log('✅ Final RIASEC scores saved to database');
+        }
         
         // Update the test results with final RIASEC profile
-        await supabase
+        const { error: testResultsError } = await supabase
           .from('test_results')
           .update({
             final_riasec_profile: finalRiasecScores,
@@ -349,7 +379,11 @@ export class ConversationalSessionService {
           })
           .eq('session_id', sessionId);
           
-        console.log('✅ Final RIASEC profile updated in test results');
+        if (testResultsError) {
+          console.error('❌ Failed to update test results with RIASEC profile:', testResultsError);
+        } else {
+          console.log('✅ Final RIASEC profile updated in test results');
+        }
         
       } catch (error) {
         console.error('❌ Error during final RIASEC assessment:', error);
