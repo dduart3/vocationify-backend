@@ -405,6 +405,46 @@ export class ConversationalSessionService {
     return aiResponse;
   }
 
+  async getSessionDetails(sessionId: string): Promise<{
+    sessionId: string;
+    status: string;
+    currentPhase: string;
+    conversationHistory: ConversationMessage[];
+    startedAt: string;
+    updatedAt: string;
+  }> {
+    // Get session data
+    const { data: session, error: sessionError } = await supabase
+      .from('test_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError || !session) {
+      throw new Error('Session not found');
+    }
+
+    return {
+      sessionId: session.id,
+      status: session.status,
+      currentPhase: session.current_phase,
+      conversationHistory: session.conversation_history || [],
+      startedAt: session.started_at,
+      updatedAt: session.updated_at
+    };
+  }
+
+  async updateSessionHeartbeat(sessionId: string): Promise<void> {
+    const { error } = await supabase
+      .from('test_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', sessionId);
+
+    if (error) {
+      throw new Error('Failed to update session heartbeat');
+    }
+  }
+
   async getSessionResults(sessionId: string): Promise<SessionResults> {
     // Get session data
     const { data: session, error: sessionError } = await supabase

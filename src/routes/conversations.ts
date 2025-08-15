@@ -58,6 +58,50 @@ router.post('/sessions/:sessionId/messages', async (req, res) => {
 });
 
 /**
+ * GET /api/conversations/sessions/:sessionId
+ * Get session details for resumption
+ */
+router.get('/sessions/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const sessionDetails = await conversationalService.getSessionDetails(sessionId);
+    
+    res.json({
+      success: true,
+      data: sessionDetails
+    });
+  } catch (error) {
+    console.error('Error getting session details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get session details'
+    });
+  }
+});
+
+/**
+ * PUT /api/conversations/sessions/:sessionId/heartbeat
+ * Update session timestamp to indicate activity
+ */
+router.put('/sessions/:sessionId/heartbeat', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    await conversationalService.updateSessionHeartbeat(sessionId);
+    
+    res.json({
+      success: true,
+      message: 'Session heartbeat updated'
+    });
+  } catch (error) {
+    console.error('Error updating session heartbeat:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update session heartbeat'
+    });
+  }
+});
+
+/**
  * GET /api/conversations/sessions/:sessionId/results
  * Get conversational session results
  */
