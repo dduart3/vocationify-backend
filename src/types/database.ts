@@ -77,9 +77,10 @@ export interface TestSession {
   // New fields for conversational support
   session_type?: 'structured' | 'conversational';
   conversation_history?: ConversationMessage[];
-  current_phase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration' | 'complete';
+  current_phase?: 'greeting' | 'enhanced_exploration' | 'career_matching' | 'reality_check' | 'final_results' | 'complete';
   ai_provider?: string;
   confidence_level?: number;
+  metadata?: Record<string, any>;
 }
 
 export interface TestResult {

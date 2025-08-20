@@ -120,14 +120,14 @@ export class ConversationalSessionService {
         
         // Both failed, use a hardcoded greeting
         greeting = {
-          message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional. Estoy aquí para ayudarte a descubrir qué carrera universitaria sería perfecta para ti. ¿Qué tipo de actividades realmente disfrutas hacer?",
+          message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional con IA avanzada. He sido actualizada para ofrecerte el test más preciso y completo. Vamos a explorar tu perfil vocacional a fondo para encontrar tu carrera ideal. ¿Qué tipo de actividades te dan más energía: trabajar con ideas abstractas, ayudar directamente a personas, o crear cosas tangibles?",
           intent: "question" as const,
           suggestedFollowUp: [
-            "¿Prefieres trabajar con tus manos o con ideas?",
-            "¿Te gusta resolver problemas complejos?",
-            "¿Disfrutas ayudar a otras personas?"
+            "¿Prefieres resolver problemas teóricos o prácticos?",
+            "¿Te motiva más el impacto social o el logro personal?",
+            "¿Disfrutas aprender cosas nuevas constantemente?"
           ],
-          nextPhase: "exploration" as const
+          nextPhase: "enhanced_exploration" as const
         };
         console.log('🔄 Using hardcoded greeting - both AI services failed');
       }
@@ -154,6 +154,242 @@ export class ConversationalSessionService {
       sessionId: session.id,
       greeting
     };
+  }
+
+  /**
+   * Enhanced phase handling for the new 4-phase methodology
+   */
+  private async handleEnhancedPhases(
+    aiResponse: ConversationResponse,
+    sessionId: string,
+    conversationHistory: ConversationMessage[],
+    originalRequest: ConversationRequest
+  ): Promise<void> {
+    const currentPhase = aiResponse.nextPhase;
+    console.log(`🎯 Enhanced phase handling for: ${currentPhase}`);
+
+    switch (currentPhase) {
+      case 'enhanced_exploration':
+        // Track exploration progress
+        const userResponses = conversationHistory.filter(msg => msg.role === 'user').length;
+        console.log(`📊 Enhanced exploration progress: ${userResponses}/15 questions answered`);
+        
+        if (userResponses >= 12) {
+          console.log(`✅ Enhanced exploration nearly complete (${userResponses}/15) - prepare for career_matching`);
+        }
+        break;
+
+      case 'career_matching':
+        console.log('🎯 Entering career matching phase - analyzing user profile for top matches');
+        // The AI will handle career matching internally, but we log for monitoring
+        if (aiResponse.careerSuggestions?.length) {
+          console.log(`✅ Career matching completed: ${aiResponse.careerSuggestions.length} careers identified`);
+          
+          // Store the identified careers for the reality check phase
+          await this.storeCareerMatchingResults(sessionId, aiResponse.careerSuggestions);
+        }
+        break;
+
+      case 'reality_check':
+        console.log('⚠️ Entering reality check phase - generating discriminating questions');
+        await this.handleRealityCheckPhase(sessionId, conversationHistory, originalRequest);
+        break;
+
+      case 'final_results':
+        console.log('🏆 Entering final results phase - compiling comprehensive assessment');
+        await this.prepareFinalResults(sessionId, conversationHistory);
+        break;
+
+      case 'complete':
+        console.log('✅ Test completion confirmed - all phases completed successfully');
+        break;
+
+      default:
+        console.log(`📝 Standard phase handling: ${currentPhase}`);
+        break;
+    }
+  }
+
+  /**
+   * Store career matching results for reality check phase
+   */
+  private async storeCareerMatchingResults(
+    sessionId: string,
+    careerSuggestions: Array<{
+      careerId: string;
+      name: string;
+      confidence: number;
+      reasoning: string;
+    }>
+  ): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('test_sessions')
+        .update({
+          // Store top career matches in metadata for reality check
+          metadata: { 
+            topCareerMatches: careerSuggestions.slice(0, 3),  // Store top 3 for reality check
+            careerMatchingTimestamp: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('❌ Failed to store career matching results:', error);
+      } else {
+        console.log(`✅ Stored top ${Math.min(careerSuggestions.length, 3)} career matches for reality check`);
+      }
+    } catch (error) {
+      console.error('❌ Error storing career matching results:', error);
+    }
+  }
+
+  /**
+   * Handle reality check phase with discriminating questions
+   */
+  private async handleRealityCheckPhase(
+    sessionId: string,
+    conversationHistory: ConversationMessage[],
+    originalRequest: ConversationRequest
+  ): Promise<void> {
+    try {
+      // Get the stored career matches
+      const { data: session } = await supabase
+        .from('test_sessions')
+        .select('metadata')
+        .eq('id', sessionId)
+        .single();
+
+      const topCareerMatches = session?.metadata?.topCareerMatches;
+      if (!topCareerMatches?.length) {
+        console.log('⚠️ No career matches found for reality check - skipping discriminating question generation');
+        return;
+      }
+
+      console.log(`🔍 Generating discriminating questions for ${topCareerMatches.length} careers`);
+
+      // Generate discriminating questions for each career (this would be used in subsequent interactions)
+      for (const careerMatch of topCareerMatches) {
+        try {
+          // Get full career details
+          const { data: careerDetails } = await supabase
+            .from('careers')
+            .select('*')
+            .eq('id', careerMatch.careerId)
+            .single();
+
+          if (careerDetails) {
+            // Extract user profile from conversation
+            const userProfile = {
+              riasecScores: originalRequest.context?.userProfile?.previousResponses?.[0]?.riasecScores || 
+                           { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
+              interests: this.extractInterestsFromConversation(conversationHistory),
+              previousResponses: conversationHistory
+                .filter(msg => msg.role === 'user')
+                .map(msg => ({
+                  question: 'User response',
+                  response: msg.content
+                }))
+            };
+
+            // Generate discriminating questions using AI
+            const discriminatingQuestions = await this.aiService.generateCareerDiscriminatingQuestions({
+              career: {
+                id: careerDetails.id,
+                name: careerDetails.name || '',
+                description: careerDetails.description || '',
+                workEnvironment: careerDetails.work_environment,
+                challenges: [], // Could be extracted from description
+                requirements: careerDetails.key_skills || []
+              },
+              userProfile
+            });
+
+            console.log(`✅ Generated ${discriminatingQuestions.length} discriminating questions for ${careerDetails.name}`);
+
+            // Store questions for potential use (optional - the AI will generate them dynamically)
+            await this.storeDiscriminatingQuestions(sessionId, careerMatch.careerId, discriminatingQuestions);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to generate discriminating questions for career ${careerMatch.careerId}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in reality check phase handling:', error);
+    }
+  }
+
+  /**
+   * Extract interests from conversation history
+   */
+  private extractInterestsFromConversation(conversationHistory: ConversationMessage[]): string[] {
+    const interests: string[] = [];
+    const userMessages = conversationHistory.filter(msg => msg.role === 'user');
+    
+    // Simple keyword extraction (could be enhanced with NLP)
+    const interestKeywords = [
+      'programar', 'código', 'tecnología', 'computadoras',
+      'ayudar', 'personas', 'social', 'comunidad',
+      'crear', 'arte', 'diseño', 'creatividad',
+      'analizar', 'investigar', 'ciencia', 'datos',
+      'liderar', 'negocio', 'empresa', 'vender',
+      'organizar', 'administrar', 'planificar'
+    ];
+
+    userMessages.forEach(msg => {
+      const content = msg.content.toLowerCase();
+      interestKeywords.forEach(keyword => {
+        if (content.includes(keyword) && !interests.includes(keyword)) {
+          interests.push(keyword);
+        }
+      });
+    });
+
+    return interests.length > 0 ? interests : ['general'];
+  }
+
+  /**
+   * Store discriminating questions (optional - for potential future use)
+   */
+  private async storeDiscriminatingQuestions(
+    sessionId: string,
+    careerId: string,
+    questions: Array<{ question: string; careerAspect: string; importance: number }>
+  ): Promise<void> {
+    try {
+      // Could store in a separate table or in session metadata
+      console.log(`📝 Discriminating questions for career ${careerId} generated and ready for use`);
+      // For now, we'll just log them as the AI generates them dynamically
+    } catch (error) {
+      console.error('❌ Error storing discriminating questions:', error);
+    }
+  }
+
+  /**
+   * Prepare final results compilation
+   */
+  private async prepareFinalResults(sessionId: string, conversationHistory: ConversationMessage[]): Promise<void> {
+    console.log('🏆 Preparing comprehensive final results');
+    
+    try {
+      // Update session to indicate final results preparation
+      await supabase
+        .from('test_sessions')
+        .update({
+          metadata: {
+            finalResultsTimestamp: new Date().toISOString(),
+            totalUserResponses: conversationHistory.filter(msg => msg.role === 'user').length,
+            completedPhases: ['enhanced_exploration', 'career_matching', 'reality_check']
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
+
+      console.log('✅ Final results preparation completed');
+    } catch (error) {
+      console.error('❌ Error preparing final results:', error);
+    }
   }
 
   async processUserMessage(
@@ -264,7 +500,7 @@ export class ConversationalSessionService {
         aiResponse = {
           message: "Disculpa, tuve un problema técnico. ¿Podrías repetir tu respuesta? Estoy aquí para ayudarte con tu orientación vocacional.",
           intent: 'clarification' as const,
-          nextPhase: request.context?.currentPhase || 'exploration' as const
+          nextPhase: request.context?.currentPhase || 'enhanced_exploration' as const
         };
         console.log('🔄 Using manual fallback response - both AI services failed');
       }
@@ -305,7 +541,30 @@ export class ConversationalSessionService {
     // Update career recommendations in test_results if provided
     console.log('🤖 AI Response career suggestions:', aiResponse.careerSuggestions);
     if (aiResponse.careerSuggestions?.length) {
-      const careerRecommendations = aiResponse.careerSuggestions.map(suggestion => ({
+      // Get available career IDs to validate against
+      const { data: availableCareers } = await supabase
+        .from('careers')
+        .select('id');
+      
+      const validCareerIds = new Set(availableCareers?.map(c => c.id) || []);
+      
+      // Filter out invalid career IDs that the AI might have hallucinated
+      const validCareerSuggestions = aiResponse.careerSuggestions.filter(suggestion => {
+        const isValid = validCareerIds.has(suggestion.careerId);
+        if (!isValid) {
+          console.error(`❌ AI hallucinated invalid career ID: ${suggestion.careerId}`);
+        }
+        return isValid;
+      });
+      
+      if (validCareerSuggestions.length === 0) {
+        console.error('❌ No valid career IDs found in AI response - all were hallucinated!');
+        return aiResponse; // Return early to avoid saving invalid data
+      }
+      
+      console.log(`✅ Validated ${validCareerSuggestions.length}/${aiResponse.careerSuggestions.length} career suggestions`);
+      
+      const careerRecommendations = validCareerSuggestions.map(suggestion => ({
         career_id: suggestion.careerId,
         confidence: suggestion.confidence,
         reasoning: suggestion.reasoning
@@ -332,6 +591,9 @@ export class ConversationalSessionService {
     } else {
       console.log('⚠️ No career suggestions from AI to save');
     }
+
+    // 🎯 ENHANCED PHASE HANDLING - Special logic for new phases
+    await this.handleEnhancedPhases(aiResponse, sessionId, updatedHistory, request);
 
     // Prepare session update
     const sessionUpdate: any = {
@@ -543,7 +805,7 @@ export class ConversationalSessionService {
         updated_at: new Date().toISOString()
       };
 
-      if (newPhase && ['greeting', 'exploration', 'assessment', 'recommendation', 'career_exploration', 'complete'].includes(newPhase)) {
+      if (newPhase && ['greeting', 'enhanced_exploration', 'career_matching', 'reality_check', 'final_results', 'complete'].includes(newPhase)) {
         updateData.current_phase = newPhase as TestSession['current_phase'];
       }
 

@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { AIServiceInterface, ConversationRequest, ConversationResponse, ConversationMessage } from "./AIServiceInterface";
+import { AIServiceInterface, ConversationRequest, ConversationResponse, ConversationMessage, CareerDiscriminatingContext, DiscriminatingQuestion } from "./AIServiceInterface";
 
 export class OpenAIService extends AIServiceInterface {
   private openai: OpenAI;
@@ -83,17 +83,17 @@ export class OpenAIService extends AIServiceInterface {
         console.log('⚠️ Missing nextPhase in OpenAI response, attempting intelligent detection');
         
         if (parsedResponse.intent === 'completion_check') {
-          console.log('🔧 Intent is completion_check - staying in career_exploration');
-          parsedResponse.nextPhase = 'career_exploration';
+          console.log('🔧 Intent is completion_check - staying in final_results');
+          parsedResponse.nextPhase = 'final_results';
         } else {
-          console.log('🔧 Default fallback - setting nextPhase to exploration');
-          parsedResponse.nextPhase = 'exploration';
+          console.log('🔧 Default fallback - setting nextPhase to enhanced_exploration');
+          parsedResponse.nextPhase = 'enhanced_exploration';
         }
       }
       
-      // Additional check: If AI gave career recommendations but still set nextPhase to career_exploration,
+      // Additional check: If AI gave career recommendations but still set nextPhase to final_results,
       // check if this might be a completion scenario based on user's last message
-      if (parsedResponse.nextPhase === 'career_exploration' && 
+      if (parsedResponse.nextPhase === 'final_results' && 
           parsedResponse.careerSuggestions && 
           parsedResponse.careerSuggestions.length > 0) {
         
@@ -116,7 +116,7 @@ export class OpenAIService extends AIServiceInterface {
         );
         
         if (hasCompletionSignal) {
-          console.log('🔧 OpenAI: Detected completion signal in user message despite AI returning career_exploration - overriding to complete');
+          console.log('🔧 OpenAI: Detected completion signal in user message despite AI returning final_results - overriding to complete');
           parsedResponse.nextPhase = 'complete';
         }
       }
@@ -181,7 +181,7 @@ Responde SOLO con JSON válido.`
   }
 
   async generateContextualQuestion(context: ConversationRequest['context']): Promise<string> {
-    const phase = context?.currentPhase || 'exploration';
+    const phase = context?.currentPhase || 'enhanced_exploration';
     const previousResponses = context?.userProfile?.previousResponses || [];
     
     try {
@@ -198,9 +198,10 @@ CONTEXTO:
 - Intereses: ${context?.userProfile?.interests?.join(', ') || 'ninguno'}
 
 TIPOS POR FASE:
-- exploration: preguntas abiertas sobre intereses
-- assessment: preguntas específicas RIASEC
-- recommendation: refinar recomendaciones
+- enhanced_exploration: preguntas profundas estratégicas sobre intereses, habilidades, valores
+- career_matching: análisis de compatibilidad de carreras
+- reality_check: preguntas discriminatorias sobre aspectos desafiantes
+- final_results: compilación de resultados finales
 
 Responde solo con la pregunta en español.`
           }
@@ -229,30 +230,7 @@ Responde solo con la pregunta en español.`
 
 PERSONALIDAD: Cálido, empático, profesional, natural (no robótico)`;
 
-    if (phase === 'career_exploration') {
-      systemPrompt += `
-
-CONTEXTO ACTUAL - EXPLORACIÓN DE CARRERAS:
-- Usuario ya tiene perfil RIASEC y recomendaciones iniciales
-- Fase interactiva: responde preguntas sobre carreras específicas
-- Proporciona información detallada: salarios, día típico, requisitos
-- Sugiere alternativas relevantes basadas en su perfil
-- Si pregunta por carrera NO disponible: sé honesto, da info general, sugiere similares >80%
-- NUNCA fuerces recomendaciones que no sean realmente similares
-- FINALIZACIÓN: Detecta si usuario está listo (3+ carreras exploradas, decisión clara)
-- Usa intent: "completion_check" para confirmar antes de nextPhase: "complete"
-
-DETECCIÓN DE FINALIZACIÓN CRÍTICA:
-- Si usuario dice CUALQUIER variación de querer ver resultados finales:
-  * "Ver resultados finales" / "Me gustaría ver los resultados finales"
-  * "Quiero ver mis resultados" / "Estoy satisfecho, ver resultados"  
-  * "Terminar y ver resultados" / "Ya decidí, quiero los resultados"
-- → nextPhase: "complete" INMEDIATAMENTE
-- Si usuario dice "Explorar más carreras" → nextPhase: "career_exploration"
-
-CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
-${context?.availableCareers?.slice(0, 10).map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 150)}... (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando...'}`;
-    } else {
+    // Updated for 4-phase methodology
       systemPrompt += `
 
 OBJETIVO: Descubrir perfil vocacional RÁPIDAMENTE y recomendar carreras MUY RELEVANTES.
@@ -263,19 +241,26 @@ REGLAS:
 - Solo hace preguntas esenciales: intereses principales, habilidades, ambiente de trabajo
 - Analiza cuidadosamente las descripciones de carreras vs intereses del usuario
 
-CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
+CARRERAS DISPONIBLES EN MARACAIBO (USAR ÚNICAMENTE ESTOS IDs EXACTOS):
 ${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode}, I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando...'}
 
-IMPORTANTE: Si mencionas carreras no en esta lista, aclara que "no están disponibles en Maracaibo actualmente"
+⚠️ CRÍTICO: SOLO puedes recomendar carreras de la lista anterior usando sus IDs EXACTOS.
+❌ PROHIBIDO inventar IDs como "ingenieria_informatica" o "ingenieria_de_sistemas"
+✅ OBLIGATORIO usar IDs de la lista anterior EXACTAMENTE como aparecen
+
+🎯 ENHANCED 4-PHASE METHODOLOGY:
+1. ENHANCED_EXPLORATION: 12-15 preguntas estratégicas profundas
+2. CAREER_MATCHING: Análisis completo + top 3 carreras  
+3. REALITY_CHECK: Preguntas discriminatorias sobre aspectos desafiantes
+4. FINAL_RESULTS: Resultados finales ajustados por reality check
 
 IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
-- PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "opciones preliminares"
+- PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "top 3 carreras"
 - DESPUÉS de dar las 3 carreras, SIEMPRE:
   * intent: "recommendation" 
-  * nextPhase: "career_exploration" (NO "complete")
-  * suggestedFollowUp: ["¿Te gustaría conocer más detalles sobre estas carreras?", "¿Prefieres que te dé otras alternativas?", "¿Quieres ver los resultados finales?"]
-- SOLO usa nextPhase: "complete" cuando el usuario pida explícitamente resultados finales`;
-    }
+  * nextPhase: "reality_check" (NO "complete")
+  * suggestedFollowUp: ["¿Estás listo/a para evaluar las realidades de estas carreras?", "¿Quieres saber sobre los aspectos desafiantes?"]
+- SOLO usa nextPhase: "complete" cuando el usuario complete el reality check`;
 
     systemPrompt += `
 
@@ -292,11 +277,140 @@ Responde SIEMPRE en formato JSON con esta estructura:
     "confidence": 0-100,
     "reasoning": "explicación"
   },
-  "careerSuggestions": [{"careerId": "USAR ID EXACTO de CARRERAS DISPONIBLES", "name": "nombre EXACTO de la lista", "confidence": 0-100, "reasoning": "por qué encaja con RIASEC"}],
-  "nextPhase": "exploration|assessment|recommendation|career_exploration|complete"
+  "careerSuggestions": [{"careerId": "COPIA EXACTAMENTE el ID de la lista anterior (NO inventes)", "name": "COPIA EXACTAMENTE el nombre de la lista", "confidence": 0-100, "reasoning": "por qué encaja con perfil"}],
+  "nextPhase": "enhanced_exploration|career_matching|reality_check|final_results|complete"
 }`;
 
     return systemPrompt;
+  }
+
+  async generateCareerDiscriminatingQuestions(context: CareerDiscriminatingContext): Promise<DiscriminatingQuestion[]> {
+    const { career, userProfile } = context;
+    
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `Genera 3-4 preguntas discriminatorias sobre esta carrera específica:
+
+CARRERA: ${career.name}
+DESCRIPCIÓN: ${career.description}
+
+PERFIL DEL USUARIO:
+- Intereses: ${userProfile.interests.join(', ')}
+- RIASEC Scores: ${JSON.stringify(userProfile.riasecScores)}
+
+OBJETIVO: Generar preguntas que evalúen si el usuario está REALMENTE preparado para los aspectos más desafiantes de esta carrera.
+
+TIPOS DE ASPECTOS A EXPLORAR:
+🩸 FÍSICOS/EMOCIONALES: Tolerancia a elementos difíciles (sangre, estrés, confrontación)
+💰 ECONÓMICOS: Inversión personal necesaria, costos de materiales/herramientas
+⏰ TIEMPO: Horarios demandantes, años de estudio, compromiso temporal
+🎓 EDUCACIONALES: Nivel de estudio requerido, especialización constante
+🌍 AMBIENTALES: Condiciones de trabajo (peligro, aire libre, viajes)
+👥 SOCIALES: Nivel de interacción, responsabilidad sobre otros
+
+EJEMPLOS:
+- Medicina: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando muerte?"
+- Arquitectura: "¿Estás preparado/a para invertir dinero personal en software y materiales costosos?"
+- Derecho: "¿Puedes manejar situaciones de alta confrontación y debates intensos?"
+
+Responde SOLO con JSON válido:`
+          },
+          {
+            role: "user", 
+            content: `Genera preguntas discriminatorias para: ${career.name}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+        response_format: { type: "json_object" }
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from OpenAI for discriminating questions");
+      }
+
+      console.log('🤖 OpenAI discriminating questions raw response:', content);
+      
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        console.log('❌ No JSON array found in OpenAI response, using fallback questions');
+        return this.getFallbackDiscriminatingQuestions(career.name);
+      }
+      
+      try {
+        const questions = JSON.parse(jsonMatch[0]) as DiscriminatingQuestion[];
+        console.log(`✅ OpenAI generated ${questions.length} discriminating questions for ${career.name}`);
+        return questions;
+      } catch (parseError) {
+        console.error('❌ OpenAI JSON parse error for discriminating questions:', parseError);
+        return this.getFallbackDiscriminatingQuestions(career.name);
+      }
+      
+    } catch (error) {
+      console.error('❌ OpenAI discriminating questions generation error:', error);
+      console.error('📋 Context:', {
+        careerName: career.name,
+        errorType: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      console.log('🔄 Using fallback discriminating questions due to OpenAI API failure');
+      return this.getFallbackDiscriminatingQuestions(career.name);
+    }
+  }
+
+  /**
+   * Fallback discriminating questions for when OpenAI generation fails
+   */
+  private getFallbackDiscriminatingQuestions(careerName: string): DiscriminatingQuestion[] {
+    const fallbackQuestions: Record<string, DiscriminatingQuestion[]> = {
+      'medicina': [
+        {
+          question: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando sufrimiento?",
+          careerAspect: "emotional",
+          importance: 5,
+          followUpEnabled: false
+        },
+        {
+          question: "¿Aceptas trabajar guardias de 24+ horas y fines de semana regularmente?",
+          careerAspect: "time_commitment", 
+          importance: 4,
+          followUpEnabled: false
+        }
+      ],
+      'ingenieria': [
+        {
+          question: "¿Disfrutas resolviendo problemas técnicos complejos por horas sin parar?",
+          careerAspect: "emotional",
+          importance: 4,
+          followUpEnabled: false
+        },
+        {
+          question: "¿Estás dispuesto/a a actualizarte constantemente con nuevas tecnologías?",
+          careerAspect: "educational",
+          importance: 4,
+          followUpEnabled: false
+        }
+      ]
+    };
+
+    const careerKey = careerName.toLowerCase();
+    const matchedQuestions = Object.keys(fallbackQuestions).find(key => 
+      careerKey.includes(key)
+    );
+
+    return matchedQuestions ? fallbackQuestions[matchedQuestions] : [
+      {
+        question: `¿Estás realmente preparado/a para los desafíos y demandas específicas de ${careerName}?`,
+        careerAspect: "emotional",
+        importance: 3,
+        followUpEnabled: false
+      }
+    ];
   }
 
   private getFallbackResponse(): ConversationResponse {
@@ -308,7 +422,7 @@ Responde SIEMPRE en formato JSON con esta estructura:
         "¿Te gusta resolver problemas complejos?",
         "¿Disfrutas ayudar a otras personas?"
       ],
-      nextPhase: "exploration"
+      nextPhase: "enhanced_exploration"
     };
   }
 }

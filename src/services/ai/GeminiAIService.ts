@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { AIServiceInterface, ConversationRequest, ConversationResponse, ConversationMessage } from "./AIServiceInterface";
+import { AIServiceInterface, ConversationRequest, ConversationResponse, ConversationMessage, CareerDiscriminatingContext, DiscriminatingQuestion } from "./AIServiceInterface";
 
 export class GeminiAIService extends AIServiceInterface {
   private ai: GoogleGenAI;
@@ -19,33 +19,62 @@ export class GeminiAIService extends AIServiceInterface {
 HISTORIAL DE CONVERSACIÓN:
 ${conversationHistory}
 
-INSTRUCCIONES ESPECÍFICAS:
-- Responde como ARIA, un asistente de orientación vocacional amigable y conversacional
-- OBJETIVO PRINCIPAL: Descubrir perfil vocacional EFICIENTEMENTE para recomendar TOP 3 carreras
-- VELOCIDAD: Después de 4-6 intercambios, transiciona a recomendaciones si tienes suficiente información
-- ESTRATEGIA: UNA pregunta clara y específica por vez - no múltiples preguntas
-- PROGRESIÓN: Saludo → Intereses → Habilidades → Valores → Ambiente → Motivaciones → Recomendaciones  
-- USA CONTEXTO: Conecta respuestas anteriores para hacer LA siguiente pregunta más inteligente
-- SÉ ESPECÍFICA: Situaciones concretas, pero UNA pregunta a la vez
-- ENFOQUE SIMPLE: Cada pregunta explora UN aspecto principal, manténlo conversacional
-- META: 5-7 intercambios rápidos, una pregunta por mensaje
+🎯 ENHANCED VOCATIONAL TEST - 4-PHASE METHODOLOGY
+================================================
 
-FASES DETALLADAS:
-1. EXPLORACIÓN (2-3 preguntas): Intereses principales y actividades favoritas
-2. ASSESSMENT (2-3 preguntas): Habilidades clave y ambiente de trabajo preferido
-3. RECOMENDACIÓN: Analiza CUIDADOSAMENTE los intereses del usuario contra la base de datos de carreras
-   - Lee las descripciones de carreras para encontrar las más relevantes
-   - Considera tanto RIASEC como la compatibilidad temática
-   - Justifica cada recomendación con conexiones específicas a sus intereses
-   - IMPORTANTE: Después de dar recomendaciones, SIEMPRE pregunta si quieren saber más
-4. EXPLORACIÓN DE CARRERAS: Responder preguntas específicas del usuario sobre las carreras recomendadas
-5. FINALIZACIÓN: Cuando usuario confirme estar satisfecho
+OBJETIVO PRINCIPAL: Proporcionar el test vocacional MÁS PRECISO usando evaluación profunda RIASEC + realidad laboral
 
-IMPORTANTE: NUNCA hagas múltiples preguntas en un solo mensaje
-CRÍTICO: 
-- Cuando des recomendaciones de carreras (intent="recommendation"), NO incluyas IDs de carreras en el mensaje
-- Lista las carreras SOLO por nombre (ej: "1. **Ingeniería en Informática**" NO "1. **Ingeniería en Informática (ID: 1234)**")
-- SIEMPRE termina con dos opciones: "¿Te gustaría conocer más detalles sobre estas carreras, o prefieres ver los resultados finales?"
+📋 NUEVO FLUJO MEJORADO (4 FASES):
+1. **ENHANCED_EXPLORATION** (12-15 preguntas profundas)
+2. **CAREER_MATCHING** (2-3 minutos de análisis) 
+3. **REALITY_CHECK** (3-5 preguntas discriminatorias por carrera TOP 3)
+4. **FINAL_RESULTS** (resultados definitivos con realidad-check aplicado)
+
+🔍 INSTRUCCIONES POR FASE:
+
+=== PHASE 1: ENHANCED_EXPLORATION ===
+META: 12-15 preguntas estratégicas para perfil RIASEC completo
+PROGRESIÓN INTELIGENTE:
+- Preguntas 1-4: INTERESES (actividades, pasiones, motivaciones)
+- Preguntas 5-8: HABILIDADES (talentos naturales, fortalezas) 
+- Preguntas 9-11: VALORES (prioridades, ambiente laboral)
+- Preguntas 12-15: ESCENARIOS (situaciones laborales específicas)
+
+ESTILO DE PREGUNTAS:
+✅ "¿Qué te emociona más: crear algo nuevo desde cero, ayudar a resolver problemas de otros, o mejorar sistemas existentes?"
+✅ "Imagina tu día laboral ideal. ¿Te ves trabajando principalmente con personas, con datos y análisis, o con objetos y herramientas?"
+✅ "¿Qué es más importante para ti: un salario alto pero rutinario, o menor salario pero con impacto social significativo?"
+
+REGLAS CRITICAL:
+- UNA pregunta específica por mensaje
+- Usa contexto de respuestas anteriores
+- Varía tipos de preguntas (escenarios, valores, preferencias)
+- Después de 12-15 preguntas → nextPhase: "career_matching"
+
+=== PHASE 2: CAREER_MATCHING ===
+- Analiza TODAS las respuestas del usuario
+- Genera perfil RIASEC detallado  
+- Identifica TOP 3 carreras más compatibles
+- Explica brevemente por qué cada una encaja
+- nextPhase: "reality_check"
+
+=== PHASE 3: REALITY_CHECK ===
+- Para cada una de las TOP 3 carreras, haz 3-5 preguntas DISCRIMINATORIAS
+- Preguntas sobre aspectos difíciles/demandantes de cada carrera
+- Evalúa si el usuario realmente está dispuesto a esos retos
+- nextPhase: "final_results" después de evaluar las 3 carreras
+
+=== PHASE 4: FINAL_RESULTS ===
+- Presenta carreras finales ajustadas por reality-check
+- Explica qué carreras pasaron/fallaron el reality-check y por qué
+- Proporciona perfil RIASEC completo
+- nextPhase: "complete"
+
+⚠️ REGLAS GENERALES:
+- Mantén el tono conversacional y amigable de ARIA
+- NUNCA múltiples preguntas en un mensaje
+- Conecta respuestas anteriores para preguntas más inteligentes
+- Sé específico con escenarios reales de Venezuela/Maracaibo
 
 FORMATO DE RESPUESTA (JSON):
 {
@@ -59,13 +88,13 @@ FORMATO DE RESPUESTA (JSON):
   },
   "careerSuggestions": [
     {
-      "careerId": "USAR ID EXACTO de las CARRERAS DISPONIBLES listadas arriba",
-      "name": "Nombre EXACTO de carrera de la lista",
+      "careerId": "COPIA EXACTAMENTE el ID de la lista de carreras disponibles (NO inventes IDs)",
+      "name": "COPIA EXACTAMENTE el nombre de la carrera de la lista",
       "confidence": 0-100,
-      "reasoning": "Explica específicamente por qué esta carrera encaja con los intereses, habilidades y valores mencionados por el usuario. Cita palabras/temas específicos de su conversación."
+      "reasoning": "Explica específicamente por qué esta carrera encaja con los intereses, habilidades y valores mencionados por el usuario."
     }
   ],
-  "nextPhase": "exploration|assessment|recommendation|career_exploration|complete"
+  "nextPhase": "enhanced_exploration|career_matching|reality_check|final_results|complete"
 }
 
 Responde SOLO con JSON válido.`;
@@ -139,17 +168,17 @@ Responde SOLO con JSON válido.`;
         console.log('⚠️ Missing nextPhase, attempting intelligent detection');
         
         if (parsedResponse.intent === 'completion_check') {
-          console.log('🔧 Intent is completion_check - staying in career_exploration');
-          parsedResponse.nextPhase = 'career_exploration';
+          console.log('🔧 Intent is completion_check - staying in final_results');
+          parsedResponse.nextPhase = 'final_results';
         } else {
-          console.log('🔧 Default fallback - setting nextPhase to exploration');
-          parsedResponse.nextPhase = 'exploration';
+          console.log('🔧 Default fallback - setting nextPhase to enhanced_exploration');
+          parsedResponse.nextPhase = 'enhanced_exploration';
         }
       }
       
-      // Additional check: If AI gave career recommendations but still set nextPhase to career_exploration,
+      // Additional check: If AI gave career recommendations but still set nextPhase to final_results,
       // check if this might be a completion scenario based on user's last message
-      if (parsedResponse.nextPhase === 'career_exploration' && 
+      if (parsedResponse.nextPhase === 'final_results' && 
           parsedResponse.careerSuggestions && 
           parsedResponse.careerSuggestions.length > 0) {
         
@@ -172,7 +201,7 @@ Responde SOLO con JSON válido.`;
         );
         
         if (hasCompletionSignal) {
-          console.log('🔧 Detected completion signal in user message despite AI returning career_exploration - overriding to complete');
+          console.log('🔧 Detected completion signal in user message despite AI returning final_results - overriding to complete');
           parsedResponse.nextPhase = 'complete';
         }
       }
@@ -245,60 +274,172 @@ Genera UNA pregunta natural y conversacional en español. Responde solo con la p
   private buildSystemPrompt(context: ConversationRequest['context']): string {
     const phase = context?.currentPhase || 'greeting';
     const userName = context?.userProfile?.name || '';
+    const responseCount = context?.userProfile?.previousResponses?.length || 0;
     
     let systemPrompt = `Eres ARIA, un asistente de orientación vocacional inteligente y amigable.
 
 PERSONALIDAD:
-- Cálido, empático y profesional
+- Cálido, empático y profesional  
 - Conversacional, no robótico
 - Genuinamente interesado en ayudar
-- Adaptas tu comunicación al usuario`;
+- Adaptas tu comunicación al usuario
 
-    if (phase === 'career_exploration') {
+📊 CONTEXTO ACTUAL:
+- Fase: ${phase}
+- Usuario: ${userName || 'Usuario'}  
+- Respuestas recibidas: ${responseCount}`;
+
+    if (phase === 'enhanced_exploration') {
       systemPrompt += `
 
-CONTEXTO ACTUAL - EXPLORACIÓN DE CARRERAS:
-- El usuario ya completó su evaluación RIASEC y recibió recomendaciones iniciales
-- Ahora está explorando carreras de forma interactiva
-- Puedes responder preguntas específicas sobre carreras, salarios, trabajo diario, requisitos
-- Sugiere alternativas relevantes basadas en su perfil
-- Ayúdalo a entender las implicaciones prácticas de cada opción
-- IMPORTANTE: USA SOLO las carreras de la lista abajo con sus IDs exactos para recomendaciones
-- Si el usuario pregunta por una carrera NO disponible en Maracaibo:
-  * Sé HONESTO: "Esa carrera no está disponible en Maracaibo actualmente"
-  * Proporciona información general básica sobre esa carrera si la conoces
-  * Busca similares en la lista con alta similitud (>80% compatible)
-  * Si no hay similares suficientes, explica las diferencias y deja que elija
-  * NUNCA fuerces una recomendación que no sea realmente similar
+🔍 FASE 1: ENHANCED_EXPLORATION
+===============================
+OBJETIVO: Realizar 12-15 preguntas estratégicas para un perfil RIASEC completo
 
-CARRERAS DISPONIBLES EN MARACAIBO:
-${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode})`).join('\n') || 'Cargando carreras...'}
+PROGRESIÓN POR NÚMERO DE RESPUESTAS:
+- Respuestas 1-4: INTERESES PROFUNDOS
+  * Actividades que genuinamente disfruta
+  * Qué le apasiona y motiva  
+  * Tipos de problemas que le gusta resolver
+  
+- Respuestas 5-8: EVALUACIÓN DE HABILIDADES
+  * Talentos naturales que ha identificado
+  * En qué se considera bueno/a
+  * Cómo prefiere aprender cosas nuevas
+  * Fortalezas reconocidas por otros
+  
+- Respuestas 9-11: VALORES Y PRIORIDADES
+  * Qué es más importante en el trabajo
+  * Ambiente laboral preferido
+  * Balance vida-trabajo vs logros profesionales
+  
+- Respuestas 12-15: ESCENARIOS LABORALES
+  * Situaciones de trabajo específicas
+  * Reacciones a diferentes tipos de responsabilidades
+  * Preferencias de liderazgo vs colaboración
 
-OBJETIVO EN ESTA FASE:
-- Resolver dudas específicas sobre carreras
-- Proporcionar información detallada y práctica
-- Sugerir alternativas cuando sea relevante
-- Ayudar a tomar una decisión informada
+TIPOS DE PREGUNTAS ESPECÍFICAS POR ÁREA:
+🎯 INTERESES: "¿Qué tipo de actividades te dan más energía: trabajar con ideas abstractas, ayudar directamente a personas, o crear cosas tangibles?"
+💪 HABILIDADES: "¿En qué situaciones te han dicho otros que eres especialmente bueno/a?"
+⚖️ VALORES: "¿Qué te motiva más: resolver problemas complejos, tener impacto social, o crear algo innovador?"
+🏢 ESCENARIOS: "Imagina que lideras un proyecto. ¿Prefieres enfocarte en la planificación estratégica, la coordinación del equipo, o la solución técnica?"
 
-LÓGICA DE FINALIZACIÓN INTELIGENTE:
-- Si detectas señales de que el usuario podría estar listo para finalizar:
-  * Ha explorado 3+ carreras
-  * Hace preguntas más específicas sobre 1-2 carreras
-  * Expresa satisfacción o decisión ("creo que ya sé", "me gusta esta opción")
-  * Ha estado en esta fase por 5+ intercambios
-- ENTONCES usa intent: "completion_check" y pregunta si quiere ver resultados finales
-- Proporciona botones: ["Ver resultados finales", "Explorar más carreras"]
+REGLAS DE PROGRESIÓN:
+- UNA pregunta conversacional por mensaje
+- Construye sobre respuestas anteriores
+- Después de 12-15 respuestas → nextPhase: "career_matching"
+- Mantén el tono natural y curioso`;
 
-DETECCIÓN DE FINALIZACIÓN CRÍTICA:
-- Si usuario dice CUALQUIER variación de querer ver resultados finales:
-  * "Ver resultados finales"
-  * "Me gustaría ver los resultados finales"
-  * "Quiero ver mis resultados"
-  * "Estoy satisfecho, ver resultados"
-  * "Terminar y ver resultados"
-  * "Ya decidí, quiero los resultados"
-- → nextPhase: "complete" INMEDIATAMENTE
-- Si usuario dice "Explorar más carreras" → nextPhase: "career_exploration" y continúa`;
+    } else if (phase === 'career_matching') {
+      systemPrompt += `
+
+🎯 FASE 2: CAREER_MATCHING  
+==========================
+OBJETIVO: Analizar perfil completo y seleccionar TOP 3 carreras más compatibles
+
+PROCESO:
+1. Revisa TODAS las ${responseCount} respuestas del usuario
+2. Calcula scores RIASEC basado en patrones de respuestas
+3. Evalúa compatibilidad temática con cada carrera disponible
+4. Selecciona las 3 carreras con mayor match (RIASEC + contenido)
+5. Explica brevemente por qué cada carrera encaja con SUS respuestas específicas
+
+FORMATO DEL MENSAJE:
+"Basado en nuestras ${responseCount} preguntas, he identificado tu perfil vocacional:
+
+[RIASEC scores breves]
+
+Las 3 carreras que mejor encajan contigo son:
+
+1. **[Carrera 1]** - [Breve explicación conectando con sus respuestas]
+2. **[Carrera 2]** - [Breve explicación conectando con sus respuestas]  
+3. **[Carrera 3]** - [Breve explicación conectando con sus respuestas]
+
+Ahora vamos a hacer algo importante: verificar si realmente estás preparado/a para los aspectos más desafiantes de estas carreras. ¿Listos para algunas preguntas más específicas?"
+
+CRÍTICO:
+- intent: "recommendation"
+- nextPhase: "reality_check"
+- careerSuggestions debe contener las 3 carreras con IDs exactos`;
+
+    } else if (phase === 'reality_check') {
+      systemPrompt += `
+
+⚠️ FASE 3: REALITY_CHECK
+========================
+OBJETIVO: Evaluar si el usuario está realmente preparado para las demandas reales de cada carrera
+
+CARRERAS A EVALUAR: ${context?.userProfile?.previousResponses?.slice(-3)?.map(r => r.question).join(', ') || 'TOP 3 carreras identificadas'}
+
+PROCESO POR CARRERA:
+Para cada una de las TOP 3 carreras, genera 3-4 preguntas DISCRIMINATORIAS sobre:
+
+🩸 ASPECTOS FÍSICOS/EMOCIONALES:
+- Medicina: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando sufrimiento?"
+- Psicología: "¿Puedes manejar escuchar traumas y problemas emocionales intensos diariamente?"
+
+💰 ASPECTOS ECONÓMICOS:
+- Arquitectura: "¿Estás dispuesto/a a invertir dinero personal en materiales y software especializado?"
+- Ingeniería: "¿Te parece aceptable gastar en herramientas y actualizaciones tecnológicas constantes?"
+
+⏰ COMPROMISO DE TIEMPO:
+- Medicina: "¿Aceptas trabajar guardias de 24+ horas y fines de semana regularmente?"
+- Derecho: "¿Estás preparado/a para años de estudio intensivo y lecturas extensas?"
+
+🎓 DEMANDAS EDUCACIONALES:
+- "¿Te ves estudiando [X años] y especializándote durante toda tu carrera?"
+
+ESTILO:
+- Sé HONESTO sobre las realidades difíciles
+- Una pregunta discriminatoria por mensaje
+- Después de evaluar las 3 carreras → nextPhase: "final_results"`;
+
+    } else if (phase === 'final_results') {
+      systemPrompt += `
+
+🏆 FASE 4: FINAL_RESULTS
+=======================
+OBJETIVO: Presentar recomendaciones finales ajustadas por reality-check
+
+PROCESO:
+1. Evalúa las respuestas del reality-check para cada carrera
+2. Ajusta las recomendaciones según compatibilidad con realidades laborales
+3. Presenta perfil RIASEC completo
+4. Explica qué carreras "pasaron" el reality-check y por qué
+5. Proporciona recomendaciones finales con justificación completa
+
+FORMATO DEL MENSAJE:
+"¡Perfecto! Basado en tu evaluación completa (${responseCount} respuestas), aquí están tus resultados finales:
+
+**TU PERFIL VOCACIONAL:**
+[Perfil RIASEC detallado]
+
+**CARRERAS RECOMENDADAS (Reality-Check Aplicado):**
+
+**PRIMERA OPCIÓN: [Carrera]**
+- Por qué encaja: [Conexión con respuestas iniciales]
+- Reality-check: [Por qué pasó las preguntas discriminatorias]
+- Compatibilidad: [Score]%
+
+**SEGUNDA OPCIÓN: [Carrera]**  
+- Por qué encaja: [Explicación]
+- Reality-check: [Resultado]
+- Compatibilidad: [Score]%
+
+[Continuar con todas las que pasaron el reality-check]
+
+**CARRERAS DESCARTADAS:**
+[Si alguna falló el reality-check, explicar por qué]
+
+¡Felicidades! Ya tienes una guía sólida para tu futuro profesional."
+
+CRÍTICO:
+- intent: "farewell"
+- nextPhase: "complete"
+- Este es el mensaje final del test
+- NO uses emojis decorativos como medallas, trofeos, etc.
+- Mantén un tono profesional pero amigable`;
+
     } else {
       systemPrompt += `
 
@@ -318,21 +459,25 @@ ASPECTOS A EXPLORAR:
 6. Relación con la tecnología y herramientas
 7. Importancia del aspecto económico vs. satisfacción personal
 
-CARRERAS DISPONIBLES EN MARACAIBO (USA IDs EXACTOS):
+CARRERAS DISPONIBLES EN MARACAIBO (USAR ÚNICAMENTE ESTOS IDs EXACTOS):
 ${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 200)} (RIASEC: ${c.riasecCode}, Scores: I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando carreras...'}
+
+⚠️ CRÍTICO: SOLO puedes recomendar carreras de la lista anterior usando sus IDs EXACTOS.
+❌ PROHIBIDO inventar IDs como "ingenieria_informatica" o "ingenieria_de_sistemas"
+✅ OBLIGATORIO usar IDs de la lista anterior EXACTAMENTE como aparecen
 
 PROCESO DE RECOMENDACIÓN:
 1. Revisa TODOS los intereses y habilidades mencionados por el usuario
-2. Examina las descripciones de carreras para encontrar coincidencias temáticas
+2. Examina las descripciones de carreras de la LISTA ANTERIOR ÚNICAMENTE
 3. Considera los scores RIASEC de las carreras vs el perfil del usuario
-4. Selecciona las 3 carreras con mayor relevancia combinada (tema + RIASEC)
-5. Explica claramente por qué cada carrera encaja con SUS intereses específicos
+4. Selecciona las 3 carreras con mayor relevancia de la LISTA DISPONIBLE
+5. Usa los IDs EXACTOS de la lista anterior en tu respuesta JSON
 
 IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
 - PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "opciones preliminares"
 - DESPUÉS de dar las 3 carreras, SIEMPRE:
   * intent: "recommendation" 
-  * nextPhase: "career_exploration" (NO "complete")
+  * nextPhase: "reality_check" (NO "complete")
   * suggestedFollowUp: ["¿Te gustaría conocer más detalles sobre estas carreras?", "¿Prefieres que te dé otras alternativas?", "¿Quieres ver los resultados finales?"]
 - SOLO usa nextPhase: "complete" cuando el usuario pida explícitamente resultados finales`;
     }
@@ -365,7 +510,7 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
         "¿Te gusta resolver problemas complejos?",
         "¿Disfrutas ayudar a otras personas?"
       ],
-      nextPhase: "exploration",
+      nextPhase: "enhanced_exploration",
       riasecAssessment: {
         scores: { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
         confidence: 20,
@@ -472,5 +617,125 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Generate career-specific discriminating questions dynamically
+   */
+  async generateCareerDiscriminatingQuestions(context: CareerDiscriminatingContext): Promise<DiscriminatingQuestion[]> {
+    return this.executeWithRetry(async () => {
+      const { career, userProfile } = context;
+      
+      const prompt = `Genera 3-4 preguntas discriminatorias sobre esta carrera específica:
+
+CARRERA: ${career.name}
+DESCRIPCIÓN: ${career.description}
+
+PERFIL DEL USUARIO:
+- Intereses: ${userProfile.interests.join(', ')}
+- RIASEC Scores: ${JSON.stringify(userProfile.riasecScores)}
+
+OBJETIVO: Generar preguntas que evalúen si el usuario está REALMENTE preparado para los aspectos más desafiantes y demandantes de esta carrera específica.
+
+TIPOS DE ASPECTOS A EXPLORAR:
+🩸 FÍSICOS/EMOCIONALES: Tolerancia a elementos difíciles (sangre, estrés, confrontación)
+💰 ECONÓMICOS: Inversión personal necesaria, costos de materiales/herramientas
+⏰ TIEMPO: Horarios demandantes, años de estudio, compromiso temporal
+🎓 EDUCACIONALES: Nivel de estudio requerido, especialización constante
+🌍 AMBIENTALES: Condiciones de trabajo (peligro, aire libre, viajes)
+👥 SOCIALES: Nivel de interacción, responsabilidad sobre otros
+
+EJEMPLOS POR CARRERA:
+- Medicina: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando muerte?"
+- Arquitectura: "¿Estás preparado/a para invertir dinero personal en software y materiales costosos?"
+- Derecho: "¿Puedes manejar situaciones de alta confrontación y debates intensos?"
+- Ingeniería: "¿Disfrutas resolviendo problemas técnicos complejos por horas sin parar?"
+
+FORMATO DE RESPUESTA (JSON):
+[
+  {
+    "question": "Pregunta discriminatoria específica y directa",
+    "careerAspect": "physical|emotional|economic|time_commitment|social|educational|environmental",
+    "importance": 1-5,
+    "followUpEnabled": true/false
+  }
+]
+
+Genera 3-4 preguntas específicas para ${career.name}. Responde SOLO con JSON válido.`;
+
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: prompt
+      });
+
+      const content = response.text || '';
+      console.log('🤖 Discriminating questions raw response:', content);
+      
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        console.log('❌ No JSON array found, using fallback questions');
+        return this.getFallbackDiscriminatingQuestions(career.name);
+      }
+      
+      try {
+        const questions = JSON.parse(jsonMatch[0]) as DiscriminatingQuestion[];
+        console.log(`✅ Generated ${questions.length} discriminating questions for ${career.name}`);
+        return questions;
+      } catch (parseError) {
+        console.error('❌ JSON parse error for discriminating questions:', parseError);
+        return this.getFallbackDiscriminatingQuestions(career.name);
+      }
+      
+    }, 'generateCareerDiscriminatingQuestions', this.getFallbackDiscriminatingQuestions(context.career.name));
+  }
+
+  /**
+   * Fallback discriminating questions for when AI generation fails
+   */
+  private getFallbackDiscriminatingQuestions(careerName: string): DiscriminatingQuestion[] {
+    const fallbackQuestions: Record<string, DiscriminatingQuestion[]> = {
+      'medicina': [
+        {
+          question: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando sufrimiento?",
+          careerAspect: "emotional",
+          importance: 5,
+          followUpEnabled: false
+        },
+        {
+          question: "¿Aceptas trabajar guardias de 24+ horas y fines de semana regularmente?",
+          careerAspect: "time_commitment", 
+          importance: 4,
+          followUpEnabled: false
+        }
+      ],
+      'ingenieria': [
+        {
+          question: "¿Disfrutas resolviendo problemas técnicos complejos por horas sin parar?",
+          careerAspect: "emotional",
+          importance: 4,
+          followUpEnabled: false
+        },
+        {
+          question: "¿Estás dispuesto/a a actualizarte constantemente con nuevas tecnologías?",
+          careerAspect: "educational",
+          importance: 4,
+          followUpEnabled: false
+        }
+      ]
+    };
+
+    const careerKey = careerName.toLowerCase();
+    const matchedQuestions = Object.keys(fallbackQuestions).find(key => 
+      careerKey.includes(key)
+    );
+
+    return matchedQuestions ? fallbackQuestions[matchedQuestions] : [
+      {
+        question: `¿Estás realmente preparado/a para los desafíos y demandas específicas de ${careerName}?`,
+        careerAspect: "emotional",
+        importance: 3,
+        followUpEnabled: false
+      }
+    ];
   }
 }

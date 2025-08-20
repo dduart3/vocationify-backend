@@ -10,7 +10,7 @@ export interface ConversationRequest {
   context?: {
     userId?: string;
     sessionId?: string;
-    currentPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration';
+    currentPhase?: 'greeting' | 'enhanced_exploration' | 'career_matching' | 'reality_check' | 'final_results' | 'complete';
     userProfile?: {
       name?: string;
       age?: number;  
@@ -46,11 +46,39 @@ export interface ConversationResponse {
     confidence: number;
     reasoning: string;
   }>;
-  nextPhase?: 'greeting' | 'exploration' | 'assessment' | 'recommendation' | 'career_exploration' | 'complete';
+  nextPhase?: 'greeting' | 'enhanced_exploration' | 'career_matching' | 'reality_check' | 'final_results' | 'complete';
+}
+
+// Interface for discriminating questions about specific careers
+export interface CareerDiscriminatingContext {
+  career: {
+    id: string;
+    name: string;
+    description: string;
+    workEnvironment?: any;
+    challenges?: string[];
+    requirements?: string[];
+  };
+  userProfile: {
+    riasecScores: Record<string, number>;
+    interests: string[];
+    previousResponses: Array<{
+      question: string;
+      response: string;
+    }>;
+  };
+}
+
+export interface DiscriminatingQuestion {
+  question: string;
+  careerAspect: 'physical' | 'emotional' | 'economic' | 'time_commitment' | 'social' | 'educational' | 'environmental';
+  importance: 1 | 2 | 3 | 4 | 5;  // Impact on career fit
+  followUpEnabled: boolean;
 }
 
 export abstract class AIServiceInterface {
   abstract generateConversationalResponse(request: ConversationRequest): Promise<ConversationResponse>;
   abstract assessRiasecFromConversation(messages: ConversationMessage[]): Promise<Record<string, number>>;
   abstract generateContextualQuestion(context: ConversationRequest['context']): Promise<string>;
+  abstract generateCareerDiscriminatingQuestions(context: CareerDiscriminatingContext): Promise<DiscriminatingQuestion[]>;
 }
