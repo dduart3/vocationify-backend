@@ -88,10 +88,10 @@ FORMATO DE RESPUESTA (JSON):
   },
   "careerSuggestions": [
     {
-      "careerId": "COPIA EXACTAMENTE el ID de la lista de carreras disponibles (NO inventes IDs)",
-      "name": "COPIA EXACTAMENTE el nombre de la carrera de la lista",
+      "careerId": "usar el ID exacto de la carrera de la lista disponible",
+      "name": "usar el nombre exacto de la carrera de la lista",
       "confidence": 0-100,
-      "reasoning": "Explica específicamente por qué esta carrera encaja con los intereses, habilidades y valores mencionados por el usuario."
+      "reasoning": "Explica por qué esta carrera encaja con el perfil del usuario."
     }
   ],
   "nextPhase": "enhanced_exploration|career_matching|reality_check|final_results|complete"
@@ -177,34 +177,7 @@ Responde SOLO con JSON válido.`;
       }
       
       // Additional check: If AI gave career recommendations but still set nextPhase to final_results,
-      // check if this might be a completion scenario based on user's last message
-      if (parsedResponse.nextPhase === 'final_results' && 
-          parsedResponse.careerSuggestions && 
-          parsedResponse.careerSuggestions.length > 0) {
-        
-        const lastUserMessage = request.messages[request.messages.length - 1]?.content?.toLowerCase() || '';
-        const completionSignals = [
-          'ver resultados finales',
-          'los resultados finales',
-          'me gustaría ver los resultados',
-          'quiero ver mis resultados',
-          'quiero los resultados',
-          'ver los resultados',
-          'estoy satisfecho',
-          'terminar',
-          'ya decidí',
-          'resultados finales'
-        ];
-        
-        const hasCompletionSignal = completionSignals.some(signal => 
-          lastUserMessage.includes(signal)
-        );
-        
-        if (hasCompletionSignal) {
-          console.log('🔧 Detected completion signal in user message despite AI returning final_results - overriding to complete');
-          parsedResponse.nextPhase = 'complete';
-        }
-      }
+      // 4-phase flow handles completion automatically - no manual signals needed
       
       return parsedResponse;
     }, 'generateConversationalResponse');
@@ -459,19 +432,21 @@ ASPECTOS A EXPLORAR:
 6. Relación con la tecnología y herramientas
 7. Importancia del aspecto económico vs. satisfacción personal
 
-CARRERAS DISPONIBLES EN MARACAIBO (USAR ÚNICAMENTE ESTOS IDs EXACTOS):
-${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 200)} (RIASEC: ${c.riasecCode}, Scores: I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando carreras...'}
+CARRERAS DISPONIBLES EN MARACAIBO (${context?.availableCareers?.length || 0} opciones):
+${context?.availableCareers?.map(c => `${c.id}|${c.name}|${c.riasecCode}`).join('\n') || 'Cargando carreras...'}
 
-⚠️ CRÍTICO: SOLO puedes recomendar carreras de la lista anterior usando sus IDs EXACTOS.
-❌ PROHIBIDO inventar IDs como "ingenieria_informatica" o "ingenieria_de_sistemas"
-✅ OBLIGATORIO usar IDs de la lista anterior EXACTAMENTE como aparecen
+⚠️ CRÍTICO - FORMATO DE CARRERA ID:
+- Los IDs son UUIDs como: "1f4c7b05-e51c-475b-9ba3-84497638911d"
+- SOLO menciona el NOMBRE de la carrera al usuario, NUNCA el ID
+- Para recomendaciones usa: careerId (UUID real de la lista), name (nombre para mostrar)
+- EJEMPLO JSON: {"careerId": "374427c2-8035-40d6-8f46-57a43e5af945", "name": "MEDICINA", "confidence": 85}
+- PROHIBIDO inventar IDs - usa TEXTUALMENTE los UUID de la lista
 
 PROCESO DE RECOMENDACIÓN:
-1. Revisa TODOS los intereses y habilidades mencionados por el usuario
-2. Examina las descripciones de carreras de la LISTA ANTERIOR ÚNICAMENTE
-3. Considera los scores RIASEC de las carreras vs el perfil del usuario
-4. Selecciona las 3 carreras con mayor relevancia de la LISTA DISPONIBLE
-5. Usa los IDs EXACTOS de la lista anterior en tu respuesta JSON
+1. Analiza los intereses del usuario cuidadosamente 
+2. Busca carreras que realmente coincidan con lo que dice
+3. Si dice "me gusta programar" → busca carreras de tecnología/computación
+4. Recomienda 3 carreras usando sus IDs reales y nombres descriptivos
 
 IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
 - PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "opciones preliminares"

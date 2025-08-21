@@ -22,7 +22,7 @@ export class OpenAIService extends AIServiceInterface {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-5-mini",
         messages,
         temperature: 0.7,
         max_tokens: 1000,
@@ -92,34 +92,7 @@ export class OpenAIService extends AIServiceInterface {
       }
       
       // Additional check: If AI gave career recommendations but still set nextPhase to final_results,
-      // check if this might be a completion scenario based on user's last message
-      if (parsedResponse.nextPhase === 'final_results' && 
-          parsedResponse.careerSuggestions && 
-          parsedResponse.careerSuggestions.length > 0) {
-        
-        const lastUserMessage = request.messages[request.messages.length - 1]?.content?.toLowerCase() || '';
-        const completionSignals = [
-          'ver resultados finales',
-          'los resultados finales',
-          'me gustaría ver los resultados',
-          'quiero ver mis resultados',
-          'quiero los resultados',
-          'ver los resultados',
-          'estoy satisfecho',
-          'terminar',
-          'ya decidí',
-          'resultados finales'
-        ];
-        
-        const hasCompletionSignal = completionSignals.some(signal => 
-          lastUserMessage.includes(signal)
-        );
-        
-        if (hasCompletionSignal) {
-          console.log('🔧 OpenAI: Detected completion signal in user message despite AI returning final_results - overriding to complete');
-          parsedResponse.nextPhase = 'complete';
-        }
-      }
+      // 4-phase flow handles completion automatically - no manual signals needed
 
       return parsedResponse;
     } catch (error) {
@@ -143,7 +116,7 @@ export class OpenAIService extends AIServiceInterface {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -186,7 +159,7 @@ Responde SOLO con JSON válido.`
     
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -241,12 +214,15 @@ REGLAS:
 - Solo hace preguntas esenciales: intereses principales, habilidades, ambiente de trabajo
 - Analiza cuidadosamente las descripciones de carreras vs intereses del usuario
 
-CARRERAS DISPONIBLES EN MARACAIBO (USAR ÚNICAMENTE ESTOS IDs EXACTOS):
-${context?.availableCareers?.map(c => `- ID: ${c.id} | ${c.name}: ${c.description?.substring(0, 180)} (RIASEC: ${c.riasecCode}, I:${c.riasecScores?.I || 0} R:${c.riasecScores?.R || 0})`).join('\n') || 'Cargando...'}
+CARRERAS DISPONIBLES EN MARACAIBO (${context?.availableCareers?.length || 0} opciones):
+${context?.availableCareers?.map(c => `${c.id}|${c.name}|${c.riasecCode}`).join('\n') || 'Cargando...'}
 
-⚠️ CRÍTICO: SOLO puedes recomendar carreras de la lista anterior usando sus IDs EXACTOS.
-❌ PROHIBIDO inventar IDs como "ingenieria_informatica" o "ingenieria_de_sistemas"
-✅ OBLIGATORIO usar IDs de la lista anterior EXACTAMENTE como aparecen
+⚠️ CRÍTICO - FORMATO DE CARRERA ID:
+- Los IDs son UUIDs como: "1f4c7b05-e51c-475b-9ba3-84497638911d"
+- SOLO menciona el NOMBRE de la carrera al usuario, NUNCA el ID  
+- Para recomendaciones usa: careerId (UUID real de la lista), name (nombre para mostrar)
+- EJEMPLO JSON: {"careerId": "374427c2-8035-40d6-8f46-57a43e5af945", "name": "MEDICINA", "confidence": 85}
+- PROHIBIDO inventar IDs - usa TEXTUALMENTE los UUID de la lista
 
 🎯 ENHANCED 4-PHASE METHODOLOGY:
 1. ENHANCED_EXPLORATION: 12-15 preguntas estratégicas profundas
@@ -277,7 +253,7 @@ Responde SIEMPRE en formato JSON con esta estructura:
     "confidence": 0-100,
     "reasoning": "explicación"
   },
-  "careerSuggestions": [{"careerId": "COPIA EXACTAMENTE el ID de la lista anterior (NO inventes)", "name": "COPIA EXACTAMENTE el nombre de la lista", "confidence": 0-100, "reasoning": "por qué encaja con perfil"}],
+  "careerSuggestions": [{"careerId": "usar ID exacto de la lista de carreras", "name": "usar nombre exacto de la lista", "confidence": 0-100, "reasoning": "por qué encaja con perfil"}],
   "nextPhase": "enhanced_exploration|career_matching|reality_check|final_results|complete"
 }`;
 
@@ -289,7 +265,7 @@ Responde SIEMPRE en formato JSON con esta estructura:
     
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
