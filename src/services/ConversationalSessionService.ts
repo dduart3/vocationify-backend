@@ -169,8 +169,8 @@ export class ConversationalSessionService {
         break;
 
       case 'reality_check':
-        console.log('⚠️ Entering reality check phase - generating discriminating questions');
-        await this.handleRealityCheckPhase(sessionId, conversationHistory, originalRequest);
+        console.log('⚠️ Entering reality check phase - AI will handle discriminating questions');
+        // AI handles reality check questions directly - no need for separate generation
         break;
 
       case 'final_results':
@@ -585,20 +585,7 @@ export class ConversationalSessionService {
           console.log('✅ Final RIASEC scores saved to database');
         }
         
-        // Update the test results with final RIASEC profile
-        const { error: testResultsError } = await supabase
-          .from('test_results')
-          .update({
-            final_riasec_profile: finalRiasecScores,
-            updated_at: new Date().toISOString()
-          })
-          .eq('session_id', sessionId);
-          
-        if (testResultsError) {
-          console.error('❌ Failed to update test results with RIASEC profile:', testResultsError);
-        } else {
-          console.log('✅ Final RIASEC profile updated in test results');
-        }
+        // RIASEC scores are now only stored in session_riasec_scores table
         
       } catch (error) {
         console.error('❌ Error during final RIASEC assessment:', error);
