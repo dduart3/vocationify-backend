@@ -28,7 +28,6 @@ interface SessionResults {
 
 export class ConversationalSessionService {
   private aiService = AIServiceFactory.getDefaultService();
-  private backupAiService = AIServiceFactory.getBackupService();
 
 
   async createConversationalSession(userId?: string): Promise<{
@@ -104,35 +103,9 @@ export class ConversationalSessionService {
       }
     };
 
-    let greeting;
-    try {
-      console.log(`🤖 Calling primary AI service (${this.aiService.constructor.name}) for session greeting`);
-      greeting = await this.aiService.generateConversationalResponse(greetingRequest);
-      console.log(`✅ Primary AI service generated greeting successfully`);
-    } catch (primaryError) {
-      console.error(`❌ Primary AI service failed for greeting:`, primaryError);
-      
-      try {
-        console.log(`🔄 Attempting backup AI service (${this.backupAiService.constructor.name}) for greeting`);
-        greeting = await this.backupAiService.generateConversationalResponse(greetingRequest);
-        console.log(`✅ Backup AI service generated greeting successfully`);
-      } catch (backupError) {
-        console.error(`❌ Backup AI service also failed for greeting:`, backupError);
-        
-        // Both failed, use a hardcoded greeting
-        greeting = {
-          message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional con IA avanzada. He sido actualizada para ofrecerte el test más preciso y completo. Vamos a explorar tu perfil vocacional a fondo para encontrar tu carrera ideal. ¿Qué tipo de actividades te dan más energía: trabajar con ideas abstractas, ayudar directamente a personas, o crear cosas tangibles?",
-          intent: "question" as const,
-          suggestedFollowUp: [
-            "¿Prefieres resolver problemas teóricos o prácticos?",
-            "¿Te motiva más el impacto social o el logro personal?",
-            "¿Disfrutas aprender cosas nuevas constantemente?"
-          ],
-          nextPhase: "enhanced_exploration" as const
-        };
-        console.log('🔄 Using hardcoded greeting - both AI services failed');
-      }
-    }
+    console.log(`🤖 Calling AI service for session greeting`);
+    const greeting = await this.aiService.generateConversationalResponse(greetingRequest);
+    console.log(`✅ AI service generated greeting successfully`);
 
     // Save AI greeting to conversation history
     const greetingMessage: ConversationMessage = {
@@ -183,11 +156,15 @@ export class ConversationalSessionService {
       case 'career_matching':
         console.log('🎯 Entering career matching phase - analyzing user profile for top matches');
         // The AI will handle career matching internally, but we log for monitoring
+        console.log('🔍 Career matching debug - aiResponse.careerSuggestions:', aiResponse.careerSuggestions);
         if (aiResponse.careerSuggestions?.length) {
           console.log(`✅ Career matching completed: ${aiResponse.careerSuggestions.length} careers identified`);
           
           // Store the identified careers for the reality check phase
+          console.log('📝 Calling storeCareerMatchingResults...');
           await this.storeCareerMatchingResults(sessionId, aiResponse.careerSuggestions);
+        } else {
+          console.log('⚠️ No careerSuggestions found in AI response - cannot store for reality check');
         }
         break;
 
@@ -209,6 +186,12 @@ export class ConversationalSessionService {
         console.log(`📝 Standard phase handling: ${currentPhase}`);
         break;
     }
+
+    // Store career suggestions in metadata whenever they're provided (regardless of phase)
+    if (aiResponse.careerSuggestions?.length) {
+      console.log(`💾 Career suggestions found in response - storing for reality check phase`);
+      await this.storeCareerMatchingResults(sessionId, aiResponse.careerSuggestions);
+    }
   }
 
   /**
@@ -224,11 +207,21 @@ export class ConversationalSessionService {
     }>
   ): Promise<void> {
     try {
+      // Get current metadata to merge with
+      const { data: currentSession } = await supabase
+        .from('test_sessions')
+        .select('metadata')
+        .eq('id', sessionId)
+        .single();
+
+      const currentMetadata = currentSession?.metadata || {};
+
       const { error } = await supabase
         .from('test_sessions')
         .update({
           // Store top career matches in metadata for reality check
           metadata: { 
+            ...currentMetadata,
             topCareerMatches: careerSuggestions.slice(0, 3),  // Store top 3 for reality check
             careerMatchingTimestamp: new Date().toISOString()
           },
@@ -263,6 +256,9 @@ export class ConversationalSessionService {
         .single();
 
       const topCareerMatches = session?.metadata?.topCareerMatches;
+      console.log('🔍 Reality check debug - Session metadata:', JSON.stringify(session?.metadata, null, 2));
+      console.log('🔍 Reality check debug - topCareerMatches:', topCareerMatches);
+      
       if (!topCareerMatches?.length) {
         console.log('⚠️ No career matches found for reality check - skipping discriminating question generation');
         return;
@@ -459,53 +455,9 @@ export class ConversationalSessionService {
       }
     };
 
-    let aiResponse;
-    try {
-      console.log(`🤖 Calling primary AI service (${this.aiService.constructor.name}) for session ${sessionId}`);
-      aiResponse = await this.aiService.generateConversationalResponse(request);
-      console.log(`✅ Primary AI service responded successfully`);
-    } catch (primaryError) {
-      console.error(`❌ Primary AI service failed for session ${sessionId}:`, primaryError);
-      console.error('📋 Primary service error context:', {
-        sessionId,
-        messageCount: request.messages.length,
-        currentPhase: request.context?.currentPhase,
-        careersAvailable: request.context?.availableCareers?.length || 0,
-        errorType: primaryError instanceof Error ? primaryError.name : typeof primaryError,
-        errorMessage: primaryError instanceof Error ? primaryError.message : String(primaryError)
-      });
-      
-      // Try backup service
-      try {
-        console.log(`🔄 Attempting backup AI service (${this.backupAiService.constructor.name}) for session ${sessionId}`);
-        aiResponse = await this.backupAiService.generateConversationalResponse(request);
-        console.log(`✅ Backup AI service responded successfully`);
-        
-        // Update session to track that backup was used
-        await supabase
-          .from('test_sessions')
-          .update({ 
-            ai_provider: `${process.env.AI_PROVIDER || 'gemini'}_backup_used`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', sessionId);
-          
-      } catch (backupError) {
-        console.error(`❌ Backup AI service also failed for session ${sessionId}:`, backupError);
-        console.error('📋 Backup service error context:', {
-          errorType: backupError instanceof Error ? backupError.name : typeof backupError,
-          errorMessage: backupError instanceof Error ? backupError.message : String(backupError)
-        });
-        
-        // Both services failed, use fallback response
-        aiResponse = {
-          message: "Disculpa, tuve un problema técnico. ¿Podrías repetir tu respuesta? Estoy aquí para ayudarte con tu orientación vocacional.",
-          intent: 'clarification' as const,
-          nextPhase: request.context?.currentPhase || 'enhanced_exploration' as const
-        };
-        console.log('🔄 Using manual fallback response - both AI services failed');
-      }
-    }
+    console.log(`🤖 Calling AI service for session ${sessionId}`);
+    const aiResponse = await this.aiService.generateConversationalResponse(request);
+    console.log(`✅ AI service responded successfully`);
 
     // Add AI response to history
     const aiMsg: ConversationMessage = {

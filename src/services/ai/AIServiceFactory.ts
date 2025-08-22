@@ -43,22 +43,4 @@ export class AIServiceFactory {
     return this.createService(provider, apiKey);
   }
 
-  static getBackupService(): AIServiceInterface {
-    // Get the backup provider (opposite of the default)
-    const defaultProvider = process.env.AI_PROVIDER as AIProvider || 'gemini';
-    const backupProvider: AIProvider = defaultProvider === 'gemini' ? 'openai' : 'gemini';
-    
-    const apiKey = backupProvider === 'gemini' 
-      ? process.env.GEMINI_API_KEY!
-      : process.env.OPENAI_API_KEY!;
-
-    if (!apiKey) {
-      console.warn(`⚠️ Backup AI service (${backupProvider}) API key not found - fallback won't be available`);
-      // Return the default service as fallback to the fallback
-      return this.getDefaultService();
-    }
-
-    console.log(`🔄 Creating backup AI service: ${backupProvider}`);
-    return this.createService(backupProvider, apiKey);
-  }
 }

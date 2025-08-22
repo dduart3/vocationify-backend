@@ -3,6 +3,7 @@ import { AIServiceInterface, ConversationRequest, ConversationResponse, Conversa
 
 export class OpenAIService extends AIServiceInterface {
   private openai: OpenAI;
+  private readonly model = "gpt-5-mini";
 
   constructor(apiKey: string) {
     super();
@@ -21,16 +22,38 @@ export class OpenAIService extends AIServiceInterface {
     ];
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages,
-        temperature: 0.7,
-        max_tokens: 1000,
-        response_format: { type: "json_object" }
+      const lastMsg = messages[messages.length - 1];
+      const lastContent = typeof lastMsg?.content === 'string' ? lastMsg.content : '[non-string content]';
+      
+      console.log('📤 OpenAI request:', {
+        model: this.model,
+        messageCount: messages.length,
+        lastMessage: lastContent.substring(0, 100) + '...',
+        hasSystemPrompt: messages[0]?.role === 'system'
       });
 
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages,
+        max_completion_tokens: 2000,
+        response_format: { type: "json_object" },
+        reasoning_effort: "low" // Add GPT-5 specific parameter
+      });
+
+      console.log('📥 OpenAI response summary:', {
+        choices: response.choices?.length || 0,
+        usage: response.usage,
+        finishReason: response.choices?.[0]?.finish_reason,
+        hasContent: !!response.choices?.[0]?.message?.content
+      });
+      
       const content = response.choices[0]?.message?.content;
       if (!content) {
+        console.error('❌ OpenAI response missing content:', {
+          choices: response.choices?.length || 0,
+          firstChoice: response.choices?.[0],
+          usage: response.usage
+        });
         throw new Error("No response from OpenAI");
       }
 
@@ -39,8 +62,8 @@ export class OpenAIService extends AIServiceInterface {
       // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.log('❌ No JSON found in OpenAI response, using fallback');
-        return this.getFallbackResponse();
+        console.log('❌ No JSON found in OpenAI response');
+        throw new Error('OpenAI response did not contain valid JSON format');
       }
       
       let jsonText = jsonMatch[0];
@@ -75,7 +98,7 @@ export class OpenAIService extends AIServiceInterface {
         parsedResponse = JSON.parse(jsonText) as ConversationResponse;
       } catch (parseError) {
         console.error('❌ OpenAI JSON parse error:', parseError);
-        return this.getFallbackResponse();
+        throw new Error(`Failed to parse OpenAI response as JSON: ${parseError}`);
       }
       
       // Ensure nextPhase is set with intelligent detection (but don't override AI's decision)
@@ -98,13 +121,13 @@ export class OpenAIService extends AIServiceInterface {
     } catch (error) {
       console.error('❌ OpenAI Service Error:', error);
       console.error('📋 Error details:', {
-        model: 'gpt-4',
+        model: this.model,
         messageCount: messages.length,
         errorType: error instanceof Error ? error.name : typeof error,
         errorMessage: error instanceof Error ? error.message : String(error)
       });
-      console.log('🔄 Returning fallback response due to OpenAI API failure');
-      return this.getFallbackResponse();
+      console.log('❌ OpenAI API failure - throwing error');
+      throw error;
     }
   }
 
@@ -116,7 +139,7 @@ export class OpenAIService extends AIServiceInterface {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: this.model,
         messages: [
           {
             role: "system",
@@ -135,7 +158,6 @@ Responde SOLO con JSON válido.`
             content: conversationText
           }
         ],
-        temperature: 0.3,
         response_format: { type: "json_object" }
       });
 
@@ -159,7 +181,7 @@ Responde SOLO con JSON válido.`
     
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: this.model,
         messages: [
           {
             role: "system",
@@ -179,8 +201,8 @@ TIPOS POR FASE:
 Responde solo con la pregunta en español.`
           }
         ],
-        temperature: 0.7,
-        max_tokens: 100
+        max_completion_tokens: 500,
+        reasoning_effort: "low"
       });
 
       return response.choices[0]?.message?.content?.trim() || "¿Qué actividades te emocionan más?";
@@ -190,8 +212,8 @@ Responde solo con la pregunta en español.`
         phase: context?.currentPhase,
         errorType: error instanceof Error ? error.name : typeof error
       });
-      console.log('🔄 Using fallback question due to generation failure');
-      return "¿Qué tipo de actividades disfrutas más?";
+      console.log('❌ Question generation failed - throwing error');
+      throw error;
     }
   }
 
@@ -199,36 +221,80 @@ Responde solo con la pregunta en español.`
     const phase = context?.currentPhase || 'greeting';
     const userName = context?.userProfile?.name || '';
     
-    let systemPrompt = `Eres ARIA, un asistente de orientación vocacional inteligente y conversacional.
+    let systemPrompt = `Eres ARIA, un consejero estudiantil que ayuda a bachilleres a decidir qué estudiar en la universidad.
 
-PERSONALIDAD: Cálido, empático, profesional, natural (no robótico)`;
+PERSONALIDAD: Cálido, comprensivo, paciente - como un hermano mayor que ya pasó por esto.
 
-    // Updated for 4-phase methodology
-      systemPrompt += `
+🎓 USUARIO TÍPICO:
+- Estudiante recién graduado de bachillerato  
+- NO sabe qué carrera estudiar
+- Conocimiento MÍNIMO sobre profesiones
+- Solo quiere saber: "¿Qué debería estudiar?"
 
-OBJETIVO: Descubrir perfil vocacional RÁPIDAMENTE y recomendar carreras MUY RELEVANTES.
+OBJETIVO: En 8-10 preguntas simples, descubrir qué carrera universitaria recomendarle.
 
-REGLAS:
+REGLAS ESTRICTAS:
 - UNA pregunta por mensaje, nunca múltiples
-- EFICIENCIA: Después de 4-6 intercambios, procede a recomendaciones
-- Solo hace preguntas esenciales: intereses principales, habilidades, ambiente de trabajo
-- Analiza cuidadosamente las descripciones de carreras vs intereses del usuario
+- PREGUNTAS SIMPLES: gustos, materias favoritas, actividades que disfruta
+- PROHIBIDO: preguntas sobre salarios, mercado laboral, empleos específicos  
+- PROHIBIDO: preguntas complejas que requieren conocimiento profesional
+- MÁXIMO 10 preguntas antes de pasar a career_matching
+- NO te adelantes a las fases
 
+🔒 CONTEXTO INTERNO - EL USUARIO NO VE ESTA INFORMACIÓN
+================================================================================
 CARRERAS DISPONIBLES EN MARACAIBO (${context?.availableCareers?.length || 0} opciones):
 ${context?.availableCareers?.map(c => `${c.id}|${c.name}|${c.riasecCode}`).join('\n') || 'Cargando...'}
+================================================================================
+⚠️ IMPORTANTE: El usuario NO puede ver esta lista. Es solo para tu referencia interna.
+⚠️ NUNCA menciones que tienes una lista o que el usuario debe revisarla.
+⚠️ Usa esta lista SOLO cuando necesites recomendar carreras específicas.
 
-⚠️ CRÍTICO - FORMATO DE CARRERA ID:
-- Los IDs son UUIDs como: "1f4c7b05-e51c-475b-9ba3-84497638911d"
-- SOLO menciona el NOMBRE de la carrera al usuario, NUNCA el ID  
-- Para recomendaciones usa: careerId (UUID real de la lista), name (nombre para mostrar)
-- EJEMPLO JSON: {"careerId": "374427c2-8035-40d6-8f46-57a43e5af945", "name": "MEDICINA", "confidence": 85}
-- PROHIBIDO inventar IDs - usa TEXTUALMENTE los UUID de la lista
+🚨 REGLAS ABSOLUTAS - VALIDACIÓN DE CAREER IDs:
+
+FORMATO OBLIGATORIO DE IDs:
+- Todos los IDs DEBEN ser UUIDs de 36 caracteres: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+- Ejemplo válido: "1f4c7b05-e51c-475b-9ba3-84497638911d"
+
+VALIDACIÓN OBLIGATORIA:
+1. El careerId DEBE existir EXACTAMENTE en la lista de arriba
+2. NO se permite modificar, acortar, o crear nuevos IDs
+3. BUSCAR el ID copiando y pegando desde la lista literal
+4. Si no encuentras una carrera perfecta, usa la más cercana de la lista
+
+FORMATO JSON OBLIGATORIO:
+{
+  "careerId": "COPIAR-EXACTO-DE-LA-LISTA-ARRIBA",
+  "name": "NOMBRE-PARA-MOSTRAR-AL-USUARIO", 
+  "confidence": 85
+}
+
+⛔ CUALQUIER ID que NO sea un UUID de 36 caracteres está PROHIBIDO
+⛔ CUALQUIER ID que NO aparezca en la lista de arriba está PROHIBIDO
 
 🎯 ENHANCED 4-PHASE METHODOLOGY:
-1. ENHANCED_EXPLORATION: 12-15 preguntas estratégicas profundas
-2. CAREER_MATCHING: Análisis completo + top 3 carreras  
-3. REALITY_CHECK: Preguntas discriminatorias sobre aspectos desafiantes
-4. FINAL_RESULTS: Resultados finales ajustados por reality check
+
+=== PHASE 1: ENHANCED_EXPLORATION ===
+- OBJETIVO: 12-15 preguntas SIMPLES sobre gustos y preferencias
+- PROHIBIDO: careerSuggestions en esta fase
+- BUENAS preguntas: materias favoritas, trabajar solo vs en equipo, actividades que disfruta
+- PROHIBIDO: preguntas sobre salarios, mercado laboral, empleos específicos
+- nextPhase: "enhanced_exploration" hasta ~15 respuestas
+- DESPUÉS de 15 preguntas: nextPhase: "career_matching"
+
+=== PHASE 2: CAREER_MATCHING ===  
+- OBJETIVO: Análisis completo + top 3 carreras
+- OBLIGATORIO: Proporcionar careerSuggestions con IDs válidos
+- intent: "recommendation"
+- nextPhase: "reality_check"
+
+=== PHASE 3: REALITY_CHECK ===
+- OBJETIVO: Preguntas discriminatorias sobre aspectos desafiantes  
+- nextPhase: "final_results"
+
+=== PHASE 4: FINAL_RESULTS ===
+- OBJETIVO: Resultados finales ajustados por reality check
+- nextPhase: "complete"
 
 IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
 - PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "top 3 carreras"
@@ -240,8 +306,37 @@ IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
 
     systemPrompt += `
 
-FASE ACTUAL: ${phase}
+🚨 FASE ACTUAL: ${phase.toUpperCase()}
 USUARIO: ${userName || 'Usuario'}
+
+${phase === 'enhanced_exploration' ? `
+🔒 INSTRUCCIONES ESPECÍFICAS PARA ENHANCED_EXPLORATION:
+- NO proporciones careerSuggestions hasta llegar a career_matching fase
+- BUENAS preguntas: materias favoritas, trabajar solo vs equipo, hobbies, actividades
+- PROHIBIDO: preguntas sobre empleos, salarios, industrias
+- PROHIBIDO dar recomendaciones de carreras ahora
+- PROHIBIDO usar "Una última cosa/pregunta" excepto en la pregunta #15 (la verdaderamente final)
+- MÁXIMO 15 preguntas - luego pasa a career_matching
+- nextPhase: "enhanced_exploration" (hasta 15 preguntas)
+- intent: "question" o "clarification" únicamente
+` : ''}
+
+${phase === 'career_matching' ? `
+🔒 INSTRUCCIONES ESPECÍFICAS PARA CAREER_MATCHING:
+- OBLIGATORIO: Proporcionar careerSuggestions con top 3 carreras
+- Usar IDs exactos de la lista de carreras disponibles
+- intent: "recommendation" 
+- nextPhase: "reality_check"
+` : ''}
+
+${phase === 'reality_check' ? `
+🔒 INSTRUCCIONES ESPECÍFICAS PARA REALITY_CHECK:
+- Haz preguntas sobre aspectos DESAFIANTES de estudiar las carreras recomendadas
+- Ejemplos: dificultad matemática, años de estudio, dedicación de tiempo
+- MÍNIMO 3-4 preguntas antes de pasar a final_results
+- nextPhase: "reality_check" (mantener hasta completar evaluación)
+- SOLO usar nextPhase: "final_results" después de evaluar aspectos difíciles
+` : ''}
 
 Responde SIEMPRE en formato JSON con esta estructura:
 {
@@ -265,7 +360,7 @@ Responde SIEMPRE en formato JSON con esta estructura:
     
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: this.model,
         messages: [
           {
             role: "system",
@@ -300,9 +395,9 @@ Responde SOLO con JSON válido:`
             content: `Genera preguntas discriminatorias para: ${career.name}`
           }
         ],
-        temperature: 0.7,
-        max_tokens: 800,
-        response_format: { type: "json_object" }
+        max_completion_tokens: 2000,
+        response_format: { type: "json_object" },
+        reasoning_effort: "low"
       });
 
       const content = response.choices[0]?.message?.content;
@@ -314,8 +409,8 @@ Responde SOLO con JSON válido:`
       
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
-        console.log('❌ No JSON array found in OpenAI response, using fallback questions');
-        return this.getFallbackDiscriminatingQuestions(career.name);
+        console.log('❌ No JSON array found in OpenAI response');
+        throw new Error('OpenAI response did not contain valid JSON array format for discriminating questions');
       }
       
       try {
@@ -324,7 +419,7 @@ Responde SOLO con JSON válido:`
         return questions;
       } catch (parseError) {
         console.error('❌ OpenAI JSON parse error for discriminating questions:', parseError);
-        return this.getFallbackDiscriminatingQuestions(career.name);
+        throw new Error(`Failed to parse OpenAI discriminating questions as JSON: ${parseError}`);
       }
       
     } catch (error) {
@@ -334,71 +429,9 @@ Responde SOLO con JSON válido:`
         errorType: error instanceof Error ? error.name : typeof error,
         errorMessage: error instanceof Error ? error.message : String(error)
       });
-      console.log('🔄 Using fallback discriminating questions due to OpenAI API failure');
-      return this.getFallbackDiscriminatingQuestions(career.name);
+      console.log('❌ Discriminating questions generation failed - throwing error');
+      throw error;
     }
   }
 
-  /**
-   * Fallback discriminating questions for when OpenAI generation fails
-   */
-  private getFallbackDiscriminatingQuestions(careerName: string): DiscriminatingQuestion[] {
-    const fallbackQuestions: Record<string, DiscriminatingQuestion[]> = {
-      'medicina': [
-        {
-          question: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando sufrimiento?",
-          careerAspect: "emotional",
-          importance: 5,
-          followUpEnabled: false
-        },
-        {
-          question: "¿Aceptas trabajar guardias de 24+ horas y fines de semana regularmente?",
-          careerAspect: "time_commitment", 
-          importance: 4,
-          followUpEnabled: false
-        }
-      ],
-      'ingenieria': [
-        {
-          question: "¿Disfrutas resolviendo problemas técnicos complejos por horas sin parar?",
-          careerAspect: "emotional",
-          importance: 4,
-          followUpEnabled: false
-        },
-        {
-          question: "¿Estás dispuesto/a a actualizarte constantemente con nuevas tecnologías?",
-          careerAspect: "educational",
-          importance: 4,
-          followUpEnabled: false
-        }
-      ]
-    };
-
-    const careerKey = careerName.toLowerCase();
-    const matchedQuestions = Object.keys(fallbackQuestions).find(key => 
-      careerKey.includes(key)
-    );
-
-    return matchedQuestions ? fallbackQuestions[matchedQuestions] : [
-      {
-        question: `¿Estás realmente preparado/a para los desafíos y demandas específicas de ${careerName}?`,
-        careerAspect: "emotional",
-        importance: 3,
-        followUpEnabled: false
-      }
-    ];
-  }
-
-  private getFallbackResponse(): ConversationResponse {
-    return {
-      message: "¡Hola! Soy ARIA, tu asistente de orientación vocacional. Estoy aquí para ayudarte a descubrir qué carrera universitaria sería perfecta para ti. ¿Qué tipo de actividades realmente disfrutas hacer?",
-      intent: "question",
-      suggestedFollowUp: [
-        "¿Prefieres trabajar con tus manos o con ideas?",
-        "¿Te gusta resolver problemas complejos?",
-        "¿Disfrutas ayudar a otras personas?"
-      ],
-      nextPhase: "enhanced_exploration"
-    };
-  }
 }

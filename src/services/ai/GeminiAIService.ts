@@ -11,6 +11,12 @@ export class GeminiAIService extends AIServiceInterface {
 
   async generateConversationalResponse(request: ConversationRequest): Promise<ConversationResponse> {
     return this.executeWithRetry(async () => {
+      // Debug: Check if careers are being passed
+      console.log('🔍 Careers available in context:', request.context?.availableCareers?.length || 0);
+      if (request.context?.availableCareers?.length) {
+        console.log('📋 First 3 careers:', request.context.availableCareers.slice(0, 3).map(c => `${c.id.substring(0, 8)}...|${c.name}`));
+      }
+      
       const systemPrompt = this.buildSystemPrompt(request.context);
       const conversationHistory = this.formatMessagesForGemini(request.messages);
       
@@ -109,8 +115,8 @@ Responde SOLO con JSON válido.`;
       
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.log('❌ No JSON found in response, using fallback');
-        return this.getFallbackResponse();
+        console.log('❌ No JSON found in Gemini response');
+        throw new Error('Gemini response did not contain valid JSON format');
       }
       
       let jsonText = jsonMatch[0];
@@ -154,8 +160,7 @@ Responde SOLO con JSON válido.`;
         parsedResponse = JSON.parse(jsonText) as ConversationResponse;
       } catch (parseError) {
         console.error('❌ JSON parse error:', parseError);
-        console.log('🔧 Attempting to use fallback...');
-        return this.getFallbackResponse();
+        throw new Error(`Failed to parse Gemini response as JSON: ${parseError}`);
       }
       console.log('✅ Parsed response:', { 
         message: parsedResponse.message?.substring(0, 50) + '...', 
@@ -213,7 +218,7 @@ Responde SOLO con JSON: {"R": score, "I": score, "A": score, "S": score, "E": sc
       const content = response.text || '';
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       return JSON.parse(jsonMatch ? jsonMatch[0] : content);
-    }, 'assessRiasecFromConversation', { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 });
+    }, 'assessRiasecFromConversation');
   }
 
   async generateContextualQuestion(context: ConversationRequest['context']): Promise<string> {
@@ -241,7 +246,7 @@ Genera UNA pregunta natural y conversacional en español. Responde solo con la p
       });
 
       return response.text?.trim() || "¿Qué tipo de actividades disfrutas más?";
-    }, 'generateContextualQuestion', "¿Qué tipo de actividades disfrutas más en tu tiempo libre?");
+    }, 'generateContextualQuestion');
   }
 
   private buildSystemPrompt(context: ConversationRequest['context']): string {
@@ -432,21 +437,43 @@ ASPECTOS A EXPLORAR:
 6. Relación con la tecnología y herramientas
 7. Importancia del aspecto económico vs. satisfacción personal
 
+🔒 CONTEXTO INTERNO - EL USUARIO NO VE ESTA INFORMACIÓN
+================================================================================
 CARRERAS DISPONIBLES EN MARACAIBO (${context?.availableCareers?.length || 0} opciones):
 ${context?.availableCareers?.map(c => `${c.id}|${c.name}|${c.riasecCode}`).join('\n') || 'Cargando carreras...'}
+================================================================================
+⚠️ IMPORTANTE: El usuario NO puede ver esta lista. Es solo para tu referencia interna.
+⚠️ NUNCA menciones que tienes una lista o que el usuario debe revisarla.
+⚠️ Usa esta lista SOLO cuando necesites recomendar carreras específicas.
 
-⚠️ CRÍTICO - FORMATO DE CARRERA ID:
-- Los IDs son UUIDs como: "1f4c7b05-e51c-475b-9ba3-84497638911d"
-- SOLO menciona el NOMBRE de la carrera al usuario, NUNCA el ID
-- Para recomendaciones usa: careerId (UUID real de la lista), name (nombre para mostrar)
-- EJEMPLO JSON: {"careerId": "374427c2-8035-40d6-8f46-57a43e5af945", "name": "MEDICINA", "confidence": 85}
-- PROHIBIDO inventar IDs - usa TEXTUALMENTE los UUID de la lista
+🚨 REGLAS ABSOLUTAS - VALIDACIÓN DE CAREER IDs:
 
-PROCESO DE RECOMENDACIÓN:
-1. Analiza los intereses del usuario cuidadosamente 
-2. Busca carreras que realmente coincidan con lo que dice
-3. Si dice "me gusta programar" → busca carreras de tecnología/computación
-4. Recomienda 3 carreras usando sus IDs reales y nombres descriptivos
+FORMATO OBLIGATORIO DE IDs:
+- Todos los IDs DEBEN ser UUIDs de 36 caracteres: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+- Ejemplo válido: "1f4c7b05-e51c-475b-9ba3-84497638911d"
+
+VALIDACIÓN OBLIGATORIA:
+1. El careerId DEBE existir EXACTAMENTE en la lista de arriba
+2. NO se permite modificar, acortar, o crear nuevos IDs
+3. BUSCAR el ID copiando y pegando desde la lista literal
+4. Si no encuentras una carrera perfecta, usa la más cercana de la lista
+
+FORMATO JSON OBLIGATORIO - VERIFICACIÓN PREVIA:
+ANTES de escribir cada careerId, BUSCA en la lista de arriba y COPIA exactamente:
+
+Ejemplo de búsqueda:
+1. Buscar "COMPUTACIÓN" en la lista → Encontrar línea con UUID|NOMBRE|RIASEC
+2. COPIAR el UUID completo (36 caracteres)
+3. Usar ese UUID exacto en el JSON
+
+{
+  "careerId": "DEBE-SER-UUID-DE-36-CARACTERES-DE-LA-LISTA",
+  "name": "NOMBRE-PARA-MOSTRAR",
+  "confidence": 85
+}
+
+⛔ CUALQUIER ID que NO sea un UUID de 36 caracteres está PROHIBIDO
+⛔ CUALQUIER ID que NO aparezca en la lista de arriba está PROHIBIDO
 
 IMPORTANTE SOBRE TERMINOLOGÍA Y FLOW:
 - PRIMERA RECOMENDACIÓN: Llama a esto "recomendaciones iniciales" o "opciones preliminares"
@@ -475,24 +502,6 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
     }).join('\n');
   }
 
-  private getFallbackResponse(): ConversationResponse {
-    console.log('🔄 Using fallback response due to AI parsing error');
-    return {
-      message: "Disculpa, tuve un pequeño problema técnico. Pero sigamos adelante: cuéntame sobre tus intereses. ¿Qué tipo de actividades realmente disfrutas hacer en tu tiempo libre?",
-      intent: "question",
-      suggestedFollowUp: [
-        "¿Prefieres trabajar con tus manos o con ideas?",
-        "¿Te gusta resolver problemas complejos?",
-        "¿Disfrutas ayudar a otras personas?"
-      ],
-      nextPhase: "enhanced_exploration",
-      riasecAssessment: {
-        scores: { R: 50, I: 50, A: 50, S: 50, E: 50, C: 50 },
-        confidence: 20,
-        reasoning: 'Respuesta de fallback - sin evaluación aún'
-      }
-    };
-  }
 
   /**
    * Executes an async function with exponential backoff retry logic
@@ -501,7 +510,6 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
     operationName: string,
-    fallbackValue?: T,
     maxRetries: number = 3,
     baseDelayMs: number = 1000
   ): Promise<T> {
@@ -543,15 +551,8 @@ ${context?.userProfile?.previousResponses?.map(r => `P: ${r.question}\nR: ${r.re
     console.error(`🔥 All retry attempts failed for ${operationName}. Final error:`, {
       errorType: lastError?.name || 'Unknown',
       errorMessage: lastError?.message || 'Unknown error',
-      totalAttempts: maxRetries,
-      fallbackAvailable: fallbackValue !== undefined
+      totalAttempts: maxRetries
     });
-
-    // Return fallback value if provided, otherwise throw the last error
-    if (fallbackValue !== undefined) {
-      console.log(`🔄 Returning fallback value for ${operationName}`);
-      return fallbackValue;
-    }
 
     throw lastError || new Error(`Failed after ${maxRetries} attempts`);
   }
@@ -648,8 +649,8 @@ Genera 3-4 preguntas específicas para ${career.name}. Responde SOLO con JSON v�
       
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
-        console.log('❌ No JSON array found, using fallback questions');
-        return this.getFallbackDiscriminatingQuestions(career.name);
+        console.log('❌ No JSON array found in Gemini response');
+        throw new Error('Gemini response did not contain valid JSON array format for discriminating questions');
       }
       
       try {
@@ -658,59 +659,10 @@ Genera 3-4 preguntas específicas para ${career.name}. Responde SOLO con JSON v�
         return questions;
       } catch (parseError) {
         console.error('❌ JSON parse error for discriminating questions:', parseError);
-        return this.getFallbackDiscriminatingQuestions(career.name);
+        throw new Error(`Failed to parse Gemini discriminating questions as JSON: ${parseError}`);
       }
       
-    }, 'generateCareerDiscriminatingQuestions', this.getFallbackDiscriminatingQuestions(context.career.name));
+    }, 'generateCareerDiscriminatingQuestions');
   }
 
-  /**
-   * Fallback discriminating questions for when AI generation fails
-   */
-  private getFallbackDiscriminatingQuestions(careerName: string): DiscriminatingQuestion[] {
-    const fallbackQuestions: Record<string, DiscriminatingQuestion[]> = {
-      'medicina': [
-        {
-          question: "¿Te sientes cómodo/a trabajando con sangre, heridas, y presenciando sufrimiento?",
-          careerAspect: "emotional",
-          importance: 5,
-          followUpEnabled: false
-        },
-        {
-          question: "¿Aceptas trabajar guardias de 24+ horas y fines de semana regularmente?",
-          careerAspect: "time_commitment", 
-          importance: 4,
-          followUpEnabled: false
-        }
-      ],
-      'ingenieria': [
-        {
-          question: "¿Disfrutas resolviendo problemas técnicos complejos por horas sin parar?",
-          careerAspect: "emotional",
-          importance: 4,
-          followUpEnabled: false
-        },
-        {
-          question: "¿Estás dispuesto/a a actualizarte constantemente con nuevas tecnologías?",
-          careerAspect: "educational",
-          importance: 4,
-          followUpEnabled: false
-        }
-      ]
-    };
-
-    const careerKey = careerName.toLowerCase();
-    const matchedQuestions = Object.keys(fallbackQuestions).find(key => 
-      careerKey.includes(key)
-    );
-
-    return matchedQuestions ? fallbackQuestions[matchedQuestions] : [
-      {
-        question: `¿Estás realmente preparado/a para los desafíos y demandas específicas de ${careerName}?`,
-        careerAspect: "emotional",
-        importance: 3,
-        followUpEnabled: false
-      }
-    ];
-  }
 }
