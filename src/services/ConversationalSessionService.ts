@@ -471,6 +471,7 @@ export class ConversationalSessionService {
     // Update RIASEC scores in session_riasec_scores table if provided
     if (aiResponse.riasecAssessment?.scores) {
       const scores = aiResponse.riasecAssessment.scores;
+      console.log('🎯 Updating incremental RIASEC scores:', scores);
       const { error: incrementalRiasecError } = await supabase
         .from('session_riasec_scores')
         .update({
@@ -487,8 +488,10 @@ export class ConversationalSessionService {
       if (incrementalRiasecError) {
         console.error('⚠️ Failed to update incremental RIASEC scores:', incrementalRiasecError);
       } else {
-        console.log('✅ Incremental RIASEC scores updated');
+        console.log('✅ Incremental RIASEC scores updated successfully');
       }
+    } else {
+      console.log('⚠️ No RIASEC scores provided in AI response');
     }
 
     // Update career recommendations in test_results if provided
