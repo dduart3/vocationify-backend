@@ -69,7 +69,7 @@ export class VocationalTestService {
       // Get AI's initial greeting automatically
       console.log('🤖 Getting AI initial greeting...')
       const aiResponse = await this.aiService.processMessage(
-        '', // Empty message for initial greeting
+        'INICIO_SESION', // Special trigger for initial greeting
         'exploration',
         [] // Empty conversation history
       )
