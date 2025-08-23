@@ -114,8 +114,26 @@ export class OpenAIService extends AIServiceInterface {
         }
       }
       
-      // Additional check: If AI gave career recommendations but still set nextPhase to final_results,
-      // 4-phase flow handles completion automatically - no manual signals needed
+      // Critical fix: If AI provided career recommendations, check if user wants to proceed to reality check
+      if (parsedResponse.careerSuggestions && parsedResponse.careerSuggestions.length > 0) {
+        // Check if user message indicates they want to proceed to reality check
+        const userWantsRealityCheck = messages.some(msg => 
+          msg.role === 'user' && 
+          typeof msg.content === 'string' &&
+          (msg.content.toLowerCase().includes('listo') || 
+           msg.content.toLowerCase().includes('realidades') ||
+           msg.content.toLowerCase().includes('reality'))
+        );
+        
+        if (userWantsRealityCheck && parsedResponse.nextPhase === 'reality_check') {
+          console.log('🔧 User requested reality check and AI responded appropriately - keeping nextPhase as reality_check');
+        } else if (parsedResponse.nextPhase === 'final_results') {
+          console.log('🔧 AI provided final career recommendations after reality check - keeping nextPhase as final_results');
+        } else if (parsedResponse.nextPhase !== 'career_matching') {
+          console.log(`🔧 AI provided career suggestions but set nextPhase to '${parsedResponse.nextPhase}' - correcting to 'career_matching'`);
+          parsedResponse.nextPhase = 'career_matching';
+        }
+      }
 
       return parsedResponse;
     } catch (error) {
@@ -333,11 +351,14 @@ ${phase === 'career_matching' ? `
 
 ${phase === 'reality_check' ? `
 🔒 INSTRUCCIONES ESPECÍFICAS PARA REALITY_CHECK:
+- ESTÁS AHORA EN LA FASE DE REALITY CHECK - NO digas "vamos a reality check"
+- YA están en reality check, haz preguntas discriminatorias directamente
 - Haz preguntas sobre aspectos DESAFIANTES de estudiar las carreras recomendadas
-- Ejemplos: dificultad matemática, años de estudio, dedicación de tiempo
-- MÍNIMO 3-4 preguntas antes de pasar a final_results
+- Ejemplos: dificultad matemática, años de estudio, dedicación de tiempo, retos específicos
+- MÍNIMO 3-4 preguntas antes de pasar a final_results  
 - nextPhase: "reality_check" (mantener hasta completar evaluación)
 - SOLO usar nextPhase: "final_results" después de evaluar aspectos difíciles
+- NO menciones que van a reality check - YA ESTÁN EN REALITY CHECK
 ` : ''}
 
 Responde SIEMPRE en formato JSON con esta estructura:

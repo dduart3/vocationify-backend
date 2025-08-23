@@ -416,6 +416,17 @@ export class ConversationalSessionService {
       userMsg
     ];
 
+    // Detect if user is requesting reality check transition
+    const requestingRealityCheck = userMessage.toLowerCase().includes('listo') && 
+                                   userMessage.toLowerCase().includes('realidades') &&
+                                   session.current_phase === 'career_matching';
+    
+    let currentPhase = session.current_phase;
+    if (requestingRealityCheck) {
+      console.log('🔄 User requesting transition from career_matching to reality_check');
+      currentPhase = 'reality_check';
+    }
+
     // Get available careers for context
     const { data: careers } = await supabase
       .from('careers')
@@ -428,7 +439,7 @@ export class ConversationalSessionService {
       context: {
         sessionId,
         userId: session.user_id,
-        currentPhase: session.current_phase,
+        currentPhase: currentPhase,
         userProfile: {
           previousResponses: conversationHistory
             .filter(msg => msg.role === 'user')
