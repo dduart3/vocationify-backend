@@ -167,6 +167,51 @@ router.post('/transition', async (req, res) => {
   }
 })
 
+// Complete reality check with final recommendations
+router.post('/complete-reality-check', async (req, res) => {
+  try {
+    const { sessionId } = req.body
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'Session ID is required',
+        code: 'MISSING_SESSION_ID'
+      })
+    }
+
+    const session = await vocationalTestService.completeRealityCheck(sessionId)
+    
+    res.json({
+      success: true,
+      session,
+      message: 'Reality check completed with final recommendations'
+    })
+
+  } catch (error: any) {
+    console.error('❌ Complete reality check error:', error)
+    
+    if (error.message === 'Session not found') {
+      return res.status(404).json({
+        error: 'Vocational test session not found',
+        code: 'SESSION_NOT_FOUND'
+      })
+    }
+
+    if (error.message === 'Can only complete reality check from reality_check phase') {
+      return res.status(400).json({
+        error: 'Can only complete reality check from reality_check phase',
+        code: 'INVALID_PHASE_TRANSITION'
+      })
+    }
+
+    res.status(500).json({
+      error: 'Failed to complete reality check',
+      code: 'COMPLETE_REALITY_CHECK_FAILED',
+      details: error.message
+    })
+  }
+})
+
 // Get session statistics
 router.get('/stats/:sessionId', async (req, res) => {
   try {

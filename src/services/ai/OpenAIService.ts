@@ -114,24 +114,30 @@ export class OpenAIService extends AIServiceInterface {
         }
       }
       
-      // Critical fix: If AI provided career recommendations, check if user wants to proceed to reality check
+      // Critical fix: If AI provided career recommendations, check context and user intent
       if (parsedResponse.careerSuggestions && parsedResponse.careerSuggestions.length > 0) {
-        // Check if user message indicates they want to proceed to reality check
-        const userWantsRealityCheck = messages.some(msg => 
-          msg.role === 'user' && 
-          typeof msg.content === 'string' &&
-          (msg.content.toLowerCase().includes('listo') || 
-           msg.content.toLowerCase().includes('realidades') ||
-           msg.content.toLowerCase().includes('reality'))
-        );
+        // Always allow career suggestions - frontend controls display via showCareers flag
+        console.log('✅ Career suggestions preserved in backend response');
         
-        if (userWantsRealityCheck && parsedResponse.nextPhase === 'reality_check') {
-          console.log('🔧 User requested reality check and AI responded appropriately - keeping nextPhase as reality_check');
-        } else if (parsedResponse.nextPhase === 'final_results') {
-          console.log('🔧 AI provided final career recommendations after reality check - keeping nextPhase as final_results');
-        } else if (parsedResponse.nextPhase !== 'career_matching') {
-          console.log(`🔧 AI provided career suggestions but set nextPhase to '${parsedResponse.nextPhase}' - correcting to 'career_matching'`);
-          parsedResponse.nextPhase = 'career_matching';
+        // Original logic for other phases (only for non-reality-check contexts)
+        if (request.context?.currentPhase !== 'reality_check') {
+          // Original logic for other phases
+          const userWantsRealityCheck = messages.some(msg => 
+            msg.role === 'user' && 
+            typeof msg.content === 'string' &&
+            (msg.content.toLowerCase().includes('listo') || 
+             msg.content.toLowerCase().includes('realidades') ||
+             msg.content.toLowerCase().includes('reality'))
+          );
+          
+          if (userWantsRealityCheck && parsedResponse.nextPhase === 'reality_check') {
+            console.log('🔧 User requested reality check and AI responded appropriately - keeping nextPhase as reality_check');
+          } else if (parsedResponse.nextPhase === 'final_results') {
+            console.log('🔧 AI provided final career recommendations after reality check - keeping nextPhase as final_results');
+          } else if (parsedResponse.nextPhase !== 'career_matching') {
+            console.log(`🔧 AI provided career suggestions but set nextPhase to '${parsedResponse.nextPhase}' - correcting to 'career_matching'`);
+            parsedResponse.nextPhase = 'career_matching';
+          }
         }
       }
 

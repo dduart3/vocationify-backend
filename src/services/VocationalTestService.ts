@@ -185,6 +185,8 @@ export class VocationalTestService {
         console.log('📊 Updated RIASEC scores')
       }
 
+      // Note: Reality check completion is now handled directly by AI nextPhase transition
+
       // Update session in database
       const { data: updatedSession, error } = await supabase
         .from('vocational_sessions')
@@ -215,6 +217,10 @@ export class VocationalTestService {
   // Transition to specific phase
   async transitionToPhase(sessionId: string, targetPhase: 'exploration' | 'career_matching' | 'reality_check' | 'complete'): Promise<VocationalSession> {
     try {
+      // Get current session to access conversation history
+      const currentSession = await this.getSession(sessionId)
+
+      // Update phase in database
       const { data, error } = await supabase
         .from('vocational_sessions')
         .update({
@@ -228,11 +234,116 @@ export class VocationalTestService {
       if (error) throw error
 
       console.log(`✅ Phase transitioned to: ${targetPhase}`)
+
+      // For reality_check phase, automatically get first AI question
+      if (targetPhase === 'reality_check') {
+        console.log('🎯 Getting initial reality check question...')
+        
+        const aiResponse = await this.aiService.processMessage(
+          'INICIAR_REALITY_CHECK', // Special trigger for reality check start
+          'reality_check',
+          currentSession.conversation_history
+        )
+
+        // Add AI's initial reality check question to conversation history
+        const aiMessageObj = {
+          role: 'assistant' as const,
+          content: aiResponse.message,
+          timestamp: new Date().toISOString()
+        }
+
+        const updatedHistory = [...currentSession.conversation_history, aiMessageObj]
+
+        // Update session with AI's reality check question and track start
+        const { data: updatedSession, error: updateError } = await supabase
+          .from('vocational_sessions')
+          .update({
+            conversation_history: updatedHistory,
+            metadata: {
+              ...currentSession.metadata,
+              realityCheckStartMessageCount: currentSession.conversation_history.length
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sessionId)
+          .select()
+          .single()
+
+        if (updateError) throw updateError
+
+        console.log('✅ Reality check started with initial AI question')
+        return updatedSession as VocationalSession
+      }
+
       return data as VocationalSession
 
     } catch (error) {
       console.error('❌ Failed to transition phase:', error)
       throw new Error('Failed to transition phase')
+    }
+  }
+
+  // Special transition from reality_check to complete with final recommendations
+  async completeRealityCheck(sessionId: string): Promise<VocationalSession> {
+    try {
+      const currentSession = await this.getSession(sessionId)
+
+      if (currentSession.current_phase !== 'reality_check') {
+        throw new Error('Can only complete reality check from reality_check phase')
+      }
+
+      // Get AI's final message with career recommendations
+      console.log('🎯 Getting final reality check completion message...')
+      const aiResponse = await this.aiService.processMessage(
+        'COMPLETAR_REALITY_CHECK', // Special trigger for completion
+        'complete', // Use complete phase for this message
+        currentSession.conversation_history
+      )
+
+      // Add AI's final message to conversation history
+      const aiMessageObj = {
+        role: 'assistant' as const,
+        content: aiResponse.message,
+        timestamp: new Date().toISOString()
+      }
+
+      const updatedHistory = [...currentSession.conversation_history, aiMessageObj]
+
+      // Prepare update data
+      const updateData: any = {
+        current_phase: 'complete',
+        conversation_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      }
+
+      // Update recommendations if provided
+      if (aiResponse.recommendations) {
+        updateData.recommendations = aiResponse.recommendations
+        console.log(`💼 Final recommendations: ${aiResponse.recommendations.length} careers`)
+      }
+
+      // Update RIASEC scores if provided
+      if (aiResponse.riasecScores) {
+        updateData.riasec_scores = aiResponse.riasecScores
+        console.log('📊 Final RIASEC scores updated')
+      }
+
+      // Update session in database
+      const { data: updatedSession, error } = await supabase
+        .from('vocational_sessions')
+        .update(updateData)
+        .eq('id', sessionId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      console.log('✅ Reality check completed with final recommendations')
+      return updatedSession as VocationalSession
+
+    } catch (error) {
+      console.error('❌ Failed to complete reality check:', error)
+      throw new Error('Failed to complete reality check')
     }
   }
 
