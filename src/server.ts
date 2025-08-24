@@ -18,15 +18,14 @@ const startServer = async () => {
       
       if (config.nodeEnv === 'development') {
         console.log(`\n📋 Available endpoints:`);
-        console.log(`   GET  /                     - API info`);
-        console.log(`   GET  /api/health           - Health check`);
-        console.log(`   POST /api/sessions         - Create session`);
-        console.log(`   GET  /api/sessions         - Get session`);
-        console.log(`   POST /api/sessions/complete - Complete session`);
-        console.log(`   GET  /api/questions/:id/next - Get next question`);
-        console.log(`   POST /api/questions/response - Submit response`);
-        console.log(`   GET  /api/results/:id      - Get results`);
-        console.log(`   GET  /api/results/:id/detailed - Get detailed results\n`);
+        console.log(`   GET  /                              - API info`);
+        console.log(`   GET  /api/health                    - Health check`);
+        console.log(`   POST /api/vocational-test/start     - Start new session`);
+        console.log(`   GET  /api/vocational-test/session/:id - Get session`);
+        console.log(`   POST /api/vocational-test/message   - Process message`);
+        console.log(`   POST /api/vocational-test/transition - Phase transition`);
+        console.log(`   POST /api/vocational-test/complete-reality-check - Complete reality check`);
+        console.log(`   GET  /api/vocational-test/stats/:id - Get session stats\n`);
       }
     });
 

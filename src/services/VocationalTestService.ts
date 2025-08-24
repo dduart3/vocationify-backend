@@ -168,10 +168,16 @@ export class VocationalTestService {
       }
 
       // Check for reality check auto-completion based on message count
-      if (session.current_phase === 'reality_check' && !aiResponse.nextPhase) {
+      if (session.current_phase === 'reality_check' && (!aiResponse.nextPhase || aiResponse.nextPhase === 'reality_check')) {
         const realityCheckStartCount = session.metadata?.realityCheckStartMessageCount || 0
         const currentMessageCount = finalHistory.length
         const realityCheckMessages = currentMessageCount - realityCheckStartCount
+        
+        console.log(`📊 Reality Check Debug:`)
+        console.log(`   - Start count: ${realityCheckStartCount}`)
+        console.log(`   - Current total: ${currentMessageCount}`)
+        console.log(`   - Reality check messages: ${realityCheckMessages}`)
+        console.log(`   - AI nextPhase: ${aiResponse.nextPhase}`)
         
         // Force completion after 12 reality check messages (6 Q&A pairs)
         if (realityCheckMessages >= 12) {

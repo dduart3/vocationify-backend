@@ -17,7 +17,7 @@ export const supabase = createClient(
 export const testDBConnection = async (): Promise<boolean> => {
   try {
     const { data, error } = await supabase
-      .from('test_sessions')
+      .from('vocational_sessions')
       .select('count')
       .limit(1);
     
