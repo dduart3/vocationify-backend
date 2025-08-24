@@ -167,6 +167,33 @@ export class VocationalTestService {
         updated_at: new Date().toISOString()
       }
 
+      // Check for reality check auto-completion based on message count
+      if (session.current_phase === 'reality_check' && !aiResponse.nextPhase) {
+        const realityCheckStartCount = session.metadata?.realityCheckStartMessageCount || 0
+        const currentMessageCount = finalHistory.length
+        const realityCheckMessages = currentMessageCount - realityCheckStartCount
+        
+        // Force completion after 12 reality check messages (6 Q&A pairs)
+        if (realityCheckMessages >= 12) {
+          console.log(`🎯 Auto-completing reality check after ${realityCheckMessages} messages`)
+          
+          // Force AI to provide completion response
+          const completionResponse = await this.aiService.processMessage(
+            'FORZAR_COMPLETAR_REALITY_CHECK', // Special completion trigger
+            'complete',
+            finalHistory
+          )
+          
+          // Replace the AI response with completion
+          aiResponse.message = completionResponse.message
+          aiResponse.nextPhase = 'complete'
+          aiResponse.recommendations = completionResponse.recommendations
+          aiResponse.riasecScores = completionResponse.riasecScores || aiResponse.riasecScores
+          
+          console.log('✅ Reality check auto-completed with final recommendations')
+        }
+      }
+
       // Update phase if AI indicates
       if (aiResponse.nextPhase) {
         updateData.current_phase = aiResponse.nextPhase
