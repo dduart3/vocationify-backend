@@ -74,6 +74,43 @@ router.get('/session/:sessionId', async (req, res) => {
   }
 })
 
+// Find active session for user (for resuming)
+router.get('/user/:userId/active-session', async (req, res) => {
+  try {
+    const { userId } = req.params
+
+    if (!userId) {
+      return res.status(400).json({
+        error: 'User ID is required',
+        code: 'MISSING_USER_ID'
+      })
+    }
+
+    const session = await vocationalTestService.findActiveUserSession(userId)
+    
+    if (!session) {
+      return res.status(404).json({
+        error: 'No active session found for user',
+        code: 'NO_ACTIVE_SESSION'
+      })
+    }
+    
+    res.json({
+      success: true,
+      session
+    })
+
+  } catch (error: any) {
+    console.error('❌ Find active session error:', error)
+    
+    res.status(500).json({
+      error: 'Failed to find active session',
+      code: 'FIND_ACTIVE_SESSION_FAILED',
+      details: error.message
+    })
+  }
+})
+
 // Send message to session
 router.post('/message', async (req, res) => {
   try {

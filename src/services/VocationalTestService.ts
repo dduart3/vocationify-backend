@@ -104,6 +104,29 @@ export class VocationalTestService {
   }
 
   // Get existing session
+  async findActiveUserSession(userId: string): Promise<VocationalSession | null> {
+    try {
+      const { data: sessions, error } = await supabase
+        .from('vocational_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .neq('current_phase', 'complete')
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (error) throw error
+
+      if (!sessions || sessions.length === 0) {
+        return null
+      }
+
+      return sessions[0]
+    } catch (error) {
+      console.error('❌ Error finding active user session:', error)
+      throw new Error('Failed to find active user session')
+    }
+  }
+
   async getSession(sessionId: string): Promise<VocationalSession> {
     try {
       const { data, error } = await supabase
