@@ -4,8 +4,64 @@ import { OpenAITTSService } from '../services/ai/OpenAITTSService';
 const router = express.Router();
 
 /**
+ * POST /api/tts/openai-speech
+ * Generate speech audio using OpenAI TTS with enhanced parameters
+ */
+router.post('/openai-speech', async (req, res) => {
+  try {
+    const { input, voice = 'shimmer', model = 'gpt-4o-mini-tts', speed = 0.9 } = req.body; // shimmer voice with slower speed
+
+    if (!input || typeof input !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Input text is required'
+      });
+    }
+
+    if (input.length > 4096) {
+      return res.status(400).json({
+        success: false,
+        error: 'Text too long (max 4096 characters)'
+      });
+    }
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'OpenAI API key not configured'
+      });
+    }
+
+    const ttsService = new OpenAITTSService(openaiApiKey);
+    
+    // Use the enhanced method that supports model and speed
+    const audioBuffer = await ttsService.generateSpeechWithOptions(input, {
+      voice,
+      model,
+      speed
+    });
+
+    // Set appropriate headers for audio response
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length.toString(),
+      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+    });
+
+    res.send(audioBuffer);
+  } catch (error) {
+    console.error('OpenAI TTS Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate speech'
+    });
+  }
+});
+
+/**
  * POST /api/tts/speech
- * Generate speech audio using OpenAI TTS
+ * Generate speech audio using OpenAI TTS (legacy endpoint)
  */
 router.post('/speech', async (req, res) => {
   try {
