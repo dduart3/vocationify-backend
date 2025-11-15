@@ -114,16 +114,21 @@ export class VocationalTestService {
         .order('created_at', { ascending: false })
         .limit(1)
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Supabase error finding active session:', error)
+        throw error
+      }
 
       if (!sessions || sessions.length === 0) {
+        console.log(`No active session found for user ${userId}`)
         return null
       }
 
+      console.log(`Found active session for user ${userId}:`, sessions[0].id)
       return sessions[0]
     } catch (error) {
       console.error('❌ Error finding active user session:', error)
-      throw new Error('Failed to find active user session')
+      throw error
     }
   }
 
